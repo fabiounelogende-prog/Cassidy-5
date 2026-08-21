@@ -1,192 +1,251 @@
-const { getPrefix } = global.utils;
-const { commands, aliases } = global.GoatBot;
-
-let fonts;
-try {
-  fonts = require('../../func/font.js');
-} catch (error) {
-  fonts = { bold: (t) => t, sansSerif: (t) => t, monospace: (t) => t, fancy: (t) => t };
-}
-
-function toTitleCase(str) {
-  if (!str) return '';
-  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
-}
+const { createCanvas, loadImage } = require('canvas');
+const fs = require('fs-extra');
+const path = require('path');
 
 module.exports = {
   config: {
     name: "help",
-    aliases: [],
-    version: "3.1.1",
-    author: "Christus",
-    countDown: 5,
+    version: "7.0.0",
+    author: "YourName",
+    countDown: 3,
     role: 0,
-    description: {
-      fr: "🧰 Affiche la liste des commandes disponibles et leurs détails"
-    },
+    shortDescription: "Menu d'aide Canvas interactif et complet",
+    longDescription: "Menu help haute résolution avec filtre par mot-clé, profil utilisateur, détails des rôles et fallback sans forfait.",
     category: "info",
-    guide: {
-      fr: "{pn} : menu principal\n{pn} <commande> : infos sur une commande\n{pn} basics : commandes de base\n{pn} search <mot> : rechercher une commande"
-    }
+    guide: "{pn} [page / nom_commande / mot_clé]"
   },
 
-  onStart: async function ({ message, args, event, role }) {
-    const prefix = getPrefix(event.threadID);
-    const arg = args[0]?.toLowerCase();
+  onStart: async function ({ api, event, args, usersData }) {
+    const { threadID, messageID, senderID } = event;
 
-    const allCommands = [];
-    const seen = new Set();
+    // 1. Chargement sécurisé de toutes les commandes
+    const commandsMap = global.GoatBot?.commands || new Map();
+    let commandList = [];
 
-    for (const [name, cmd] of commands) {
-      if (cmd.config.role > role) continue;
-      if (!seen.has(name)) {
-        seen.add(name);
-        allCommands.push(cmd);
+    commandsMap.forEach((cmd, name) => {
+      const cfg = cmd.config || {};
+      commandList.push({
+        name: name,
+        description: cfg.shortDescription || cfg.longDescription || "Aucune description disponible",
+        category: cfg.category || "GÉNÉRAL",
+        role: cfg.role || 0,
+        countDown: cfg.countDown || 0,
+        guide: cfg.guide || ""
+      });
+    });
+
+    const inputArg = args[0] ? args[0].toLowerCase() : null;
+
+    // 2. CAS 1 : Recherche d'une commande spécifique (/help <nom_commande>)
+    if (inputArg && isNaN(inputArg)) {
+      const exactCmd = commandList.find(c => c.name.toLowerCase() === inputArg);
+
+      if (exactCmd) {
+        const roleLabel = exactCmd.role === 1 ? "Admin Groupe" : exactCmd.role === 2 ? "Admin Bot" : "Tous les membres";
+        const detailMsg = 
+          `📖 **INFORMATIONS SUR /${exactCmd.name.toUpperCase()}**\n` +
+          `──────────────────\n` +
+          `📝 **Description:** ${exactCmd.description}\n` +
+          `🏷️ **Catégorie:** ${exactCmd.category.toUpperCase()}\n` +
+          `🔐 **Permission:** ${roleLabel}\n` +
+          `⏱️ **Attente (Cooldown):** ${exactCmd.countDown} seconde(s)\n` +
+          `💡 **Utilisation:** ${exactCmd.guide ? exactCmd.guide.replace(/\{pn\}/g, "/" + exactCmd.name) : "/" + exactCmd.name}`;
+
+        return api.sendMessage(detailMsg, threadID, messageID);
+      }
+
+      // Si ce n'est pas un nom exact, on filtre la liste par mot-clé
+      const filtered = commandList.filter(c => 
+        c.name.toLowerCase().includes(inputArg) || 
+        c.category.toLowerCase().includes(inputArg) ||
+        c.description.toLowerCase().includes(inputArg)
+      );
+
+      if (filtered.length > 0) {
+        commandList = filtered;
       }
     }
 
-    allCommands.sort((a, b) => a.config.name.localeCompare(b.config.name));
+    // 3. CAS 2 : Menu Général avec Pagination
+    let page = 1;
+    if (inputArg && !isNaN(inputArg)) page = parseInt(inputArg);
 
-    if (!arg) {
-      const categorized = {};
+    const itemsPerPage = 10; // 10 cartes aérées par image
+    const totalPages = Math.ceil(commandList.length / itemsPerPage) || 1;
+    if (page < 1 || page > totalPages) page = 1;
 
-      for (const cmd of allCommands) {
-        const cat = cmd.config.category || "other";
-        if (!categorized[cat]) categorized[cat] = [];
-        categorized[cat].push(cmd.config.name);
+    const displayCmds = commandList.slice((page - 1) * itemsPerPage, page * itemsPerPage);
+
+    // 4. Génération de couleurs dynamiques et fluides
+    const randomHex = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+    const colorPrimary = `#${randomHex()}`;
+    const colorSecondary = `#${randomHex()}`;
+
+    // Dimensions Canvas
+    const canvasWidth = 950;
+    const canvasHeight = 1150;
+    const canvas = createCanvas(canvasWidth, canvasHeight);
+    const ctx = canvas.getContext('2d');
+
+    // ARRIÈRE-PLAN
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+    bgGradient.addColorStop(0, "#0a0c14");
+    bgGradient.addColorStop(1, "#121624");
+    ctx.fillStyle = bgGradient;
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // EFFETS NÉON EN ARRIÈRE-PLAN
+    const g1 = ctx.createRadialGradient(canvasWidth, 0, 20, canvasWidth, 0, 650);
+    g1.addColorStop(0, colorPrimary);
+    g1.addColorStop(1, 'transparent');
+    ctx.fillStyle = g1;
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.arc(canvasWidth, 0, 650, 0, Math.PI * 2);
+    ctx.fill();
+
+    const g2 = ctx.createRadialGradient(0, canvasHeight, 20, 0, canvasHeight, 550);
+    g2.addColorStop(0, colorSecondary);
+    g2.addColorStop(1, 'transparent');
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.arc(0, canvasHeight, 550, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
+
+    // 5. PHOTO DE PROFIL UTILISATEUR
+    try {
+      const avatarUrl = await usersData.getAvatarUrl(senderID);
+      if (avatarUrl) {
+        const avatar = await loadImage(avatarUrl);
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(90, 90, 48, 0, Math.PI * 2, true);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(avatar, 42, 42, 96, 96);
+        ctx.restore();
+
+        // Cerclage dynamique
+        ctx.strokeStyle = colorPrimary;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(90, 90, 50, 0, Math.PI * 2, true);
+        ctx.stroke();
       }
+    } catch (err) {
+      // Pas de crash si l'avatar est indisponible
+    }
 
-      const sortedCats = Object.keys(categorized).sort();
+    // 6. EN-TÊTE
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 36px Sans-Serif";
+    ctx.fillText("CENTRE D'AIDE", 165, 80);
 
-      let msg = `${fonts.bold("🔍 Available Commands")} 🧰 (${allCommands.length})\n\n`;
+    ctx.fillStyle = colorPrimary;
+    ctx.font = "bold 16px Sans-Serif";
+    ctx.fillText(`${commandList.length} COMMANDES • PAGE ${page}/${totalPages}`, 165, 110);
 
-      for (const cat of sortedCats) {
-        msg += `${fonts.bold(toTitleCase(cat))} (${categorized[cat].length})\n`;
+    // Ligne décorative
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(40, 160);
+    ctx.lineTo(canvasWidth - 40, 160);
+    ctx.stroke();
 
-        const cmds = categorized[cat].sort();
+    // 7. CARTES DE COMMANDES (2 Colonnes x 5 Lignes)
+    let x = 40;
+    let y = 185;
+    let col = 0;
+    const cardWidth = 425;
+    const cardHeight = 150;
 
-        for (let i = 0; i < cmds.length; i += 3) {
-          const line = cmds
-            .slice(i, i + 3)
-            .map(c => `📄 ${fonts.sansSerif(c)}`)
-            .join("   ");
-          msg += line + "\n";
+    displayCmds.forEach((item) => {
+      // Fond de la carte
+      ctx.fillStyle = "rgba(255, 255, 255, 0.04)";
+      ctx.beginPath();
+      ctx.roundRect(x, y, cardWidth, cardHeight, 18);
+      ctx.fill();
+
+      // Bordure subtile
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Accent latéral
+      ctx.fillStyle = colorSecondary;
+      ctx.beginPath();
+      ctx.roundRect(x + 6, y + 20, 6, 110, 3);
+      ctx.fill();
+
+      // Nom de la commande
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 22px Sans-Serif";
+      ctx.fillText(`/${item.name}`, x + 28, y + 45);
+
+      // Badge de Catégorie & Cooldown
+      ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+      ctx.beginPath();
+      ctx.roundRect(x + 28, y + 58, 110, 22, 6);
+      ctx.fill();
+
+      ctx.fillStyle = colorPrimary;
+      ctx.font = "bold 11px Sans-Serif";
+      const catText = item.category.length > 12 ? item.category.substring(0, 10) + ".." : item.category;
+      ctx.fillText(catText.toUpperCase(), x + 36, y + 73);
+
+      // Description courte
+      ctx.fillStyle = "#a0a5b5";
+      ctx.font = "14px Sans-Serif";
+      let desc = item.description;
+      if (desc.length > 45) desc = desc.substring(0, 42) + "...";
+      ctx.fillText(desc, x + 28, y + 115);
+
+      col++;
+      x += cardWidth + 20;
+      if (col === 2) {
+        col = 0;
+        x = 40;
+        y += cardHeight + 25;
+      }
+    });
+
+    // 8. PIED DE PAGE
+    ctx.fillStyle = "#70758a";
+    ctx.font = "15px Sans-Serif";
+    ctx.fillText(`💡 Tapez '/help ${page + 1 > totalPages ? 1 : page + 1}' pour voir la suite ou '/help [nom]' pour les détails.`, 40, canvasHeight - 35);
+
+    // 9. ENVOI DE L'IMAGE & TEXTE FALLBACK
+    const cacheDir = path.join(__dirname, "cache");
+    const cachePath = path.join(cacheDir, `help_${senderID}_${Date.now()}.png`);
+    fs.ensureDirSync(cacheDir);
+
+    const buffer = canvas.toBuffer("image/png");
+    fs.writeFileSync(cachePath, buffer);
+
+    // Formatage texte sans forfait (Zero Data)
+    let textFallback = `📌 **LISTE DES COMMANDES (Page ${page}/${totalPages})**\n`;
+    textFallback += `───────────\n`;
+    displayCmds.forEach((item) => {
+      textFallback += `🔹 **/${item.name}** : ${item.description}\n`;
+    });
+    textFallback += `\n➡️ *Tapez '/help ${page + 1 > totalPages ? 1 : page + 1}' pour la page suivante.*`;
+
+    api.sendMessage(
+      {
+        body: textFallback,
+        attachment: fs.createReadStream(cachePath)
+      },
+      threadID,
+      (err) => {
+        // Nettoyage sécurisé du fichier temporaire
+        if (fs.existsSync(cachePath)) {
+          fs.unlinkSync(cachePath);
         }
-
-        msg += "\n";
-      }
-
-      msg += `\n${fonts.bold("➜ Command details:")} ${prefix}menu <commande>\n`;
-      msg += `${fonts.bold("➜ Basics:")} ${prefix}help basics\n`;
-      msg += `${fonts.bold("➜ Search:")} ${prefix}help search <mot>\n`;
-      msg += `${fonts.bold("➜ Developed by @Christus")} 🎀`;
-
-      return message.reply(msg);
-    }
-
-    if (arg === "basics") {
-      const basicCmdList = [
-        "register", "items", "gift", "bal", "bank", "active", "streak",
-        "vault", "bag", "rank", "ratings", "report", "trade", "uid",
-        "pet", "rosashop", "garden", "arena", "mtls"
-      ];
-
-      const validCommands = [];
-
-      for (const cmdName of basicCmdList) {
-        const cmd = commands.get(cmdName);
-        if (cmd && cmd.config.role <= role) {
-          validCommands.push(cmd);
-        }
-      }
-
-      if (validCommands.length === 0) {
-        return message.reply(fonts.bold("❌ No basic commands available for your role."));
-      }
-
-      let msg = `${fonts.bold("✅ Basic Commands")}\n\n`;
-
-      for (const cmd of validCommands) {
-        const cfg = cmd.config;
-        const desc = cfg.description?.fr || "No description";
-        msg += `📁 ${prefix}${cfg.name} ${fonts.bold("➜")} ${desc}\n`;
-      }
-
-      msg += `\n${fonts.bold("➜ Try to Explore more commands!")}\n`;
-      msg += `${fonts.bold("➜ View all:")} ${prefix}help all\n`;
-      msg += `${fonts.bold("➜ Developed by @Christus")} 🎀`;
-
-      return message.reply(msg);
-    }
-
-    if (arg === "search" || arg === "find") {
-      const searchStr = args[1];
-      if (!searchStr) {
-        return message.reply(
-          `🔎 Search a command by putting a search keyword as argument.\n\n${fonts.bold("EXAMPLE:")} ${prefix}menu search shop`
-        );
-      }
-
-      const results = [];
-      const searchLower = searchStr.toLowerCase();
-
-      for (const [name, cmd] of commands) {
-        if (cmd.config.role > role) continue;
-        const cfg = cmd.config;
-        const searchableText = `${cfg.name} ${cfg.category || ""} ${(cfg.aliases || []).join(" ")} ${cfg.description?.fr || ""}`.toLowerCase();
-        if (searchableText.includes(searchLower)) {
-          results.push(cmd);
-        }
-      }
-
-      if (results.length === 0) {
-        return message.reply(`🔎 **Search Results** (0)\n❓ No Results.`);
-      }
-
-      const topResults = results.slice(0, 5);
-      let msg = `${fonts.bold(`🔎 Search Results (${topResults.length})`)}\n\n`;
-
-      for (const cmd of topResults) {
-        const cfg = cmd.config;
-        const aliasesList = cfg.aliases && cfg.aliases.length > 0 ? `\nAliases: ${cfg.aliases.join(", ")}` : "";
-        msg += `📁 ${prefix}${fonts.bold(cfg.name)}${aliasesList}\n`;
-        msg += `${fonts.bold("➜")} ${cfg.description?.fr || "No Description"}\n\n`;
-      }
-
-      msg += `${fonts.bold("➜ Developed by @Christus")} 🎀`;
-
-      return message.reply(msg);
-    }
-
-    const cmdName = args[0];
-    let cmd = commands.get(cmdName);
-    if (!cmd) {
-      const alias = aliases.get(cmdName);
-      if (alias) cmd = commands.get(alias);
-    }
-
-    if (!cmd) {
-      return message.reply(fonts.bold(`❌ Command "${cmdName}" does not exist`));
-    }
-
-    const cfg = cmd.config;
-
-    let usage = cfg.guide?.fr || "No guide available";
-    usage = usage.replace(/{p}/g, prefix).replace(/{n}/g, cfg.name);
-
-    const roleText = cfg.role == 0 ? "All users" : cfg.role == 1 ? "Group admins" : cfg.role == 2 ? "Bot admin" : "Unknown";
-
-    const detail = `${fonts.bold(`╭─── 📄 ${toTitleCase(cfg.name)} ───`)}
-│ ➤ Name: ${fonts.sansSerif(cfg.name)}
-│ ➤ Author: ${cfg.author || "Unknown"}
-│ ➤ Description: ${cfg.description?.fr || "None"}
-│ ➤ Usage: ${fonts.monospace(usage)}
-│ ➤ Category: ${cfg.category || "other"}
-│ ➤ Cooldown: ${cfg.countDown || 1}s
-│ ➤ Role: ${roleText}
-│ ➤ Aliases: ${cfg.aliases?.length ? cfg.aliases.join(", ") : "None"}
-${fonts.bold("╰────────────────")}`;
-
-    return message.reply(detail);
+      },
+      messageID
+    );
   }
 };
+        
