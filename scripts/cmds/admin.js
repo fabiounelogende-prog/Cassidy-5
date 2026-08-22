@@ -29,51 +29,48 @@ function truncateText(ctx, text, maxWidth) {
 }
 
 // ==========================================
-// 🎨 ENGIN CANVAS POUR LES ACCÈS ADMIN
+// 🎨 ENGINE CANVAS VIP - OBJECTS EDITION
 // ==========================================
-async function generateAdminCanvas(userId, title, subtitle, mainText, themeColor) {
-	const width = 900;
-	const height = 480;
+async function generateAdminCanvas(userId, title, subtitle, itemsList, themeColor) {
+	const width = 1000;
+	const height = 550;
 	const canvas = createCanvas(width, height);
 	const ctx = canvas.getContext('2d');
 
-	// 1. Fond dégradé sombre Style Forteresse / Royal Cyber
-	let gradient = ctx.createLinearGradient(0, 0, width, height);
-	gradient.addColorStop(0, '#0c0514');
-	gradient.addColorStop(0.5, '#180a29');
-	gradient.addColorStop(1, '#0c0514');
-	ctx.fillStyle = gradient;
+	// 1. Fond Cyberpunk Sombre
+	const bgGradient = ctx.createLinearGradient(0, 0, width, height);
+	bgGradient.addColorStop(0, '#06070c');
+	bgGradient.addColorStop(0.5, '#0f121e');
+	bgGradient.addColorStop(1, '#06070c');
+	ctx.fillStyle = bgGradient;
 	ctx.fillRect(0, 0, width, height);
 
-	// 2. Halo lumineux d'arrière-plan
-	const glowGrad = ctx.createRadialGradient(190, 240, 20, 190, 240, 250);
-	glowGrad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
-	glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-	ctx.fillStyle = glowGrad;
+	// 2. Halo d'ambiance dynamique
+	const glow = ctx.createRadialGradient(200, 275, 20, 200, 275, 300);
+	glow.addColorStop(0, themeColor + '33'); // Opacité à 20%
+	glow.addColorStop(1, 'transparent');
+	ctx.fillStyle = glow;
 	ctx.fillRect(0, 0, width, height);
 
-	// 3. Cadres doubles gravés de la couleur du thème
+	// 3. Cadre principal Glassmorphism
+	ctx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+	drawRoundedRect(ctx, 30, 30, width - 60, height - 60, 20);
+	ctx.fill();
+
 	ctx.strokeStyle = themeColor;
-	ctx.lineWidth = 4;
-	drawRoundedRect(ctx, 25, 25, 850, 430, 12);
+	ctx.lineWidth = 3;
+	drawRoundedRect(ctx, 30, 30, width - 60, height - 60, 20);
 	ctx.stroke();
 
-	ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+	ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
 	ctx.lineWidth = 1;
-	drawRoundedRect(ctx, 32, 32, 836, 416, 8);
+	drawRoundedRect(ctx, 40, 40, width - 80, height - 80, 15);
 	ctx.stroke();
 
-	// 4. Séparateurs graphiques
-	ctx.fillStyle = themeColor;
-	ctx.font = 'bold 16px sans-serif';
-	ctx.textAlign = 'left';
-	ctx.fillText("✧ ▬▭▬ ▬▬ ✦ ▬▬ ▬▭▬ ✧", 420, 65);
-	ctx.fillText("✧ ▬▭▬ ▬▬ ✦ ▬▬ ▬▭▬ ✧", 420, 425);
-
-	// 5. Incrustation de la photo de profil
-	const avatarX = 190;
-	const avatarY = 240;
-	const avatarRadius = 110;
+	// 4. Photo de Profil (Avatar)
+	const avatarX = 180;
+	const avatarY = 250;
+	const avatarRadius = 100;
 
 	ctx.save();
 	ctx.beginPath();
@@ -92,50 +89,87 @@ async function generateAdminCanvas(userId, title, subtitle, mainText, themeColor
 	} catch (e) {}
 
 	if (!imgLoaded) {
-		ctx.fillStyle = '#1c0d2e';
+		ctx.fillStyle = '#141824';
 		ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
 		ctx.fillStyle = themeColor;
-		ctx.font = 'bold 60px sans-serif';
+		ctx.font = 'bold 70px sans-serif';
 		ctx.textAlign = 'center';
-		ctx.fillText("👑", avatarX, avatarY + 20);
+		ctx.fillText("👑", avatarX, avatarY + 25);
 	}
 	ctx.restore();
 
-	// Anneau de sécurité néon
+	// Contour de l'avatar
 	ctx.strokeStyle = themeColor;
-	ctx.lineWidth = 6;
+	ctx.lineWidth = 5;
 	ctx.beginPath();
-	ctx.arc(avatarX, avatarY, avatarRadius + 2, 0, Math.PI * 2);
+	ctx.arc(avatarX, avatarY, avatarRadius + 4, 0, Math.PI * 2);
 	ctx.stroke();
 
-	// 6. Écriture des en-têtes système
+	// 5. Textes de Header
 	ctx.textAlign = 'left';
 	ctx.fillStyle = themeColor;
-	ctx.font = 'bold 34px sans-serif';
-	ctx.fillText(truncateText(ctx, title, 430), 420, 120);
+	ctx.font = 'bold 36px sans-serif';
+	ctx.fillText(truncateText(ctx, title, 550), 340, 105);
 
 	ctx.fillStyle = '#FFFFFF';
-	ctx.font = 'bold 22px sans-serif';
-	ctx.fillText(truncateText(ctx, subtitle, 430), 420, 175);
+	ctx.font = 'bold 20px sans-serif';
+	ctx.fillText(truncateText(ctx, subtitle, 550), 340, 145);
 
-	// Zone d'affichage de la liste ou des UID
-	ctx.fillStyle = '#E0E0E0';
-	ctx.font = '18px sans-serif';
-	
-	const lines = mainText.split('\n');
-	let y = 220;
-	const lineHeight = 28;
+	// Ligne de séparation
+	ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+	ctx.lineWidth = 2;
+	ctx.beginPath();
+	ctx.moveTo(340, 165);
+	ctx.lineTo(width - 60, 165);
+	ctx.stroke();
 
-	for (let i = 0; i < lines.length; i++) {
-		if (y > 390) {
-			ctx.fillStyle = themeColor;
-			ctx.fillText("• ... et d'autres enregistrements", 420, y);
-			break;
-		}
-		ctx.fillText(truncateText(ctx, lines[i], 430), 420, y);
-		y += lineHeight;
+	// 6. Rendu des OBJETS (Badges Administrateurs)
+	let startY = 190;
+	const cardX = 340;
+	const cardW = 590;
+	const cardH = 65;
+
+	for (let i = 0; i < Math.min(itemsList.length, 4); i++) {
+		const item = itemsList[i];
+
+		// Carte d'objet
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+		drawRoundedRect(ctx, cardX, startY, cardW, cardH, 12);
+		ctx.fill();
+
+		ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+		ctx.lineWidth = 1;
+		ctx.stroke();
+
+		// Badge latéral de statut
+		ctx.fillStyle = themeColor;
+		drawRoundedRect(ctx, cardX + 6, startY + 10, 5, 45, 3);
+		ctx.fill();
+
+		// Nom de l'utilisateur
+		ctx.fillStyle = '#FFFFFF';
+		ctx.font = 'bold 18px sans-serif';
+		ctx.fillText(truncateText(ctx, item.name, 320), cardX + 25, startY + 30);
+
+		// Badge UID (Objet)
+		ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+		drawRoundedRect(ctx, cardX + 370, startY + 18, 200, 28, 8);
+		ctx.fill();
+
+		ctx.fillStyle = '#A0A5B5';
+		ctx.font = '13px monospace';
+		ctx.fillText(`UID: ${item.uid}`, cardX + 382, startY + 36);
+
+		startY += cardH + 12;
 	}
 
+	if (itemsList.length > 4) {
+		ctx.fillStyle = themeColor;
+		ctx.font = 'bold 15px sans-serif';
+		ctx.fillText(`+ ${itemsList.length - 4} autre(s) enregistrement(s) dans la base...`, cardX, startY + 15);
+	}
+
+	// 7. Sauvegarde dans le cache
 	const tmpDir = path.join(__dirname, "cache");
 	await fs.ensureDir(tmpDir);
 	const imagePath = path.join(tmpDir, `admin_${Date.now()}_${userId}.png`);
@@ -146,26 +180,26 @@ async function generateAdminCanvas(userId, title, subtitle, mainText, themeColor
 module.exports = {
 	config: {
 		name: "admin",
-		version: "3.5.0",
-		author: "NTKhang + Celestin 👑 (Canvas Edition)",
+		version: "4.0.0",
+		author: "NTKhang + Celestin 👑 (Object Canvas VIP)",
 		countDown: 5,
 		role: 2,
-		usePrefix: false, // MODE SANS PRÉFIXE ACTIVÉ
+		usePrefix: false,
 		description: {
-			en: "Manage admin system with visual cards"
+			en: "Gérer le système administrateur sous forme de cartes d'objets VIP"
 		},
 		category: "system"
 	},
 
 	langs: {
 		en: {
-			added: "👑 Accès accordé à %1 élu(s) :\n%2",
-			alreadyAdmin: "\n⚠️ Déjà dans l'élite :\n%2",
-			missingIdAdd: "⚠️ Donne un UID ou tag",
-			removed: "❌ Pouvoir retiré à %1 membre(s) :\n%2",
-			notAdmin: "⚠️ Non membre du système :\n%2",
-			missingIdRemove: "⚠️ Donne un UID ou tag",
-			listAdmin: "👑 Les Boss du Système :\n%1"
+			added: "👑 Accès accordé à %1 membre(s) :\n%2",
+			alreadyAdmin: "\n⚠️ Déjà présent dans la liste :\n%2",
+			missingIdAdd: "⚠️ Indique un UID ou identifie un utilisateur par tag.",
+			removed: "❌ Rôle révoqué pour %1 membre(s) :\n%2",
+			notAdmin: "⚠️ Non répertorié dans les administrateurs :\n%2",
+			missingIdRemove: "⚠️ Indique un UID ou identifie un utilisateur par tag.",
+			listAdmin: "👑 **PANNEAU DES ADMINISTRATEURS DU BOT**\n%1"
 		}
 	},
 
@@ -204,8 +238,7 @@ module.exports = {
 					uids.map(uid => usersData.getName(uid).then(name => ({ uid, name })).catch(() => ({ uid, name: "Utilisateur" })))
 				);
 
-				const canvasText = getNames.map(i => `• ${i.name}\n  [UID: ${i.uid}]`).join("\n");
-				const imagePath = await generateAdminCanvas(uids[0], "👑 ACCÈS SYSTÈME ACCORDÉ", `Élu(s) détecté(s) : ${notAdminIds.length}`, canvasText, "#ffb703");
+				const imagePath = await generateAdminCanvas(uids[0], "👑 ACCÈS PRIVILÉGIÉ ACCORDÉ", `Mise à jour : +${notAdminIds.length} nouvel administrateur`, getNames, "#FFB703");
 
 				let replyText = (notAdminIds.length > 0 ? getLang("added", notAdminIds.length, getNames.map(i => `• ${i.name} (${i.uid})`).join("\n")) : "") +
 					(adminIds.length > 0 ? getLang("alreadyAdmin", adminIds.length, adminIds.map(uid => `• ${uid}`).join("\n")) : "");
@@ -247,8 +280,7 @@ module.exports = {
 					adminIds.map(uid => usersData.getName(uid).then(name => ({ uid, name })).catch(() => ({ uid, name: "Utilisateur" })))
 				);
 
-				const canvasText = getNames.map(i => `• ${i.name}\n  [UID: ${i.uid}]`).join("\n");
-				const imagePath = await generateAdminCanvas(uids[0], "❌ POUVOIR DESTITUTION", `Statut : ${adminIds.length} révoqué(s)`, canvasText, "#f72585");
+				const imagePath = await generateAdminCanvas(uids[0], "❌ RÉVOCATION DU STATUT", `Mise à jour : -${adminIds.length} administrateur(s)`, getNames, "#FF0055");
 
 				let replyText = (adminIds.length > 0 ? getLang("removed", adminIds.length, getNames.map(i => `• ${i.name} (${i.uid})`).join("\n")) : "") +
 					(notAdminIds.length > 0 ? getLang("notAdmin", notAdminIds.length, notAdminIds.map(uid => `• ${uid}`).join("\n")) : "");
@@ -265,18 +297,16 @@ module.exports = {
 					config.adminBot.map(uid => usersData.getName(uid).then(name => ({ uid, name })).catch(() => ({ uid, name: "Utilisateur" })))
 				);
 
-				const canvasText = getNames.map((i, index) => `${index + 1}. ${i.name} (${i.uid})`).join("\n");
-				const imagePath = await generateAdminCanvas(senderID, "🛡️ LISTE DES SOUVERAINS", `Total : ${config.adminBot.length} Administrateurs`, canvasText, "#00f5d4");
+				const imagePath = await generateAdminCanvas(senderID, "🛡️ REGISTRE DES ADMINISTRATEURS", `Effectif total : ${config.adminBot.length} membres`, getNames, "#00F5D4");
 
-				return message.reply({ body: getLang("listAdmin", getNames.map(i => `• ${i.name} (${i.uid})`).join("\n")), attachment: fs.createReadStream(imagePath) }, () => {
+				return message.reply({ body: getLang("listAdmin", getNames.map((i, index) => `${index + 1}. ${i.name} (${i.uid})`).join("\n")), attachment: fs.createReadStream(imagePath) }, () => {
 					if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
 				});
 			}
 
 			// ================= DEFAULT =================
 			default:
-				return message.reply("⚠️ Commande invalide. Options valides : add (-a), remove (-r), list (-l)");
+				return message.reply("⚠️ Syntaxe incorrecte. Commandes acceptées : admin add (-a), admin remove (-r), admin list (-l)");
 		}
 	}
 };
-		
