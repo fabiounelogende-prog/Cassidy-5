@@ -1,3 +1,8 @@
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const fs = require('fs-extra');
+const path = require('path');
+const axios = require('axios');
+
 const { getStreamsFromAttachment } = global.utils;
 
 let fonts;
@@ -5,15 +10,163 @@ try {
   fonts = require("../../func/font.js");
 } catch (error) {}
 
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+}
+
+function truncateText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text;
+  while (ctx.measureText(text + '...').width > maxWidth && text.length > 0) {
+    text = text.slice(0, -1);
+  }
+  return text + '...';
+}
+
+// ==========================================
+// 🎨 MOTEUR CANVAS CYBER BROADCAST
+// ==========================================
+async function generateNotificationCanvas(senderID, adminName, messageText) {
+  const width = 1000;
+  const height = 500;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+
+  // Couleurs dynamiques aléatoires
+  const randomHex = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+  const themeColor = `#${randomHex()}`;
+  const secondaryColor = `#${randomHex()}`;
+
+  // 1. Fond sombre dégradé
+  const bg = ctx.createLinearGradient(0, 0, width, height);
+  bg.addColorStop(0, '#05060a');
+  bg.addColorStop(0.5, '#0d101d');
+  bg.addColorStop(1, '#05060a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Halo lumineux
+  const glow = ctx.createRadialGradient(200, 250, 10, 200, 250, 400);
+  glow.addColorStop(0, themeColor + '40');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+
+  // 3. Cadre style Forteresse Cyber
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+  drawRoundedRect(ctx, 25, 25, width - 50, height - 50, 20);
+  ctx.fill();
+
+  ctx.strokeStyle = themeColor;
+  ctx.lineWidth = 3;
+  drawRoundedRect(ctx, 25, 25, width - 50, height - 50, 20);
+  ctx.stroke();
+
+  // 4. Photo de Profil (Avatar Admin)
+  const avatarX = 180;
+  const avatarY = 250;
+  const avatarRadius = 105;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2, true);
+  ctx.closePath();
+  ctx.clip();
+
+  const avatarUrl = `https://graph.facebook.com/${senderID}/picture?height=500&width=500&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
+  let imgLoaded = false;
+
+  try {
+    const res = await axios.get(avatarUrl, { responseType: 'arraybuffer', timeout: 3000 });
+    const userAvatar = await loadImage(Buffer.from(res.data));
+    ctx.drawImage(userAvatar, avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+    imgLoaded = true;
+  } catch (e) {}
+
+  if (!imgLoaded) {
+    ctx.fillStyle = '#121624';
+    ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
+    ctx.fillStyle = themeColor;
+    ctx.font = 'bold 70px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText("📢", avatarX, avatarY + 25);
+  }
+  ctx.restore();
+
+  // Anneau néon
+  ctx.strokeStyle = themeColor;
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(avatarX, avatarY, avatarRadius + 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 5. Contenu du Message & Header
+  ctx.textAlign = 'left';
+  ctx.fillStyle = themeColor;
+  ctx.font = 'bold 36px sans-serif';
+  ctx.fillText("📢 BROADCAST SYSTEM", 330, 95);
+
+  // Badge d'administrateur
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  drawRoundedRect(ctx, 330, 115, 280, 32, 8);
+  ctx.fill();
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText(`EXPÉDITEUR: ${adminName.toUpperCase()}`, 342, 136);
+
+  // Ligne de séparation
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(330, 165);
+  ctx.lineTo(width - 50, 165);
+  ctx.stroke();
+
+  // Zone de texte du message
+  ctx.fillStyle = '#E2E8F0';
+  ctx.font = '20px sans-serif';
+  
+  const rawLines = (messageText || "Annonce officielle de l'administration.").split('\n');
+  let y = 205;
+  const lineHeight = 30;
+
+  for (let i = 0; i < rawLines.length; i++) {
+    if (y > 420) {
+      ctx.fillStyle = secondaryColor;
+      ctx.fillText("... [voir message complet]", 330, y);
+      break;
+    }
+    ctx.fillText(truncateText(ctx, rawLines[i], 610), 330, y);
+    y += lineHeight;
+  }
+
+  // Sauvegarde temporaire
+  const tmpDir = path.join(__dirname, "cache");
+  await fs.ensureDir(tmpDir);
+  const imagePath = path.join(tmpDir, `noti_${Date.now()}_${senderID}.png`);
+  await fs.outputFile(imagePath, canvas.toBuffer('image/png'));
+  return imagePath;
+}
+
 module.exports = {
   config: {
     name: "notification",
     aliases: ["notify", "noti"],
-    version: "3.0",
-    author: "Christus",
+    version: "4.0",
+    author: "Christus + Canvas VIP",
     countDown: 5,
     role: 4,
-    description: "📢 Envoie une notification à tous les groupes (admin only)",
+    description: "📢 Envoie une notification visuelle Canvas à tous les groupes",
     category: "owner",
     guide: {
       fr: "{pn} <message> [-a] [-p]\n   -a : mentionner tous les membres\n   -p : épingler le message"
@@ -37,7 +190,6 @@ module.exports = {
     }
 
     const adminName = (await api.getUserInfo(event.senderID))[event.senderID]?.name || "Administrateur";
-
     const prepared = await this.prepareMessage({ event, message: cleanMessage, options, adminName });
 
     const allThreads = await this.getActiveThreads(threadsData, api);
@@ -45,8 +197,17 @@ module.exports = {
       return message.reply("❌ Aucun groupe actif trouvé.");
     }
 
-    const confirmMsg = `📢 Envoi de notification\n━━━━━━━━━━━━━━━━━━\n➜ ${allThreads.length} groupe(s) concerné(s)\n➜ Délai : ${delayPerGroup} ms par groupe\n➜ Options : ${options.tagAll ? "tag all" : "aucun tag"} ${options.pin ? "+ pin" : ""}\n➜ From : ${adminName}\n\n✅ Confirmez l'envoi en répondant avec oui (30 secondes).`;
-    const replyMsg = await message.reply(fonts?.bold ? fonts.bold(confirmMsg) : confirmMsg);
+    // Génération de la carte d'aperçu
+    const canvasImagePath = await generateNotificationCanvas(event.senderID, adminName, cleanMessage);
+
+    const confirmMsg = `📢 **ENVOI BROADCAST CANVAS**\n━━━━━━━━━━━━━━━━━━\n➜ ${allThreads.length} groupe(s) ciblé(s)\n➜ Délai : ${delayPerGroup} ms par groupe\n➜ Options : ${options.tagAll ? "Tag All" : "Standard"} ${options.pin ? "+ Épinglage" : ""}\n➜ Expéditeur : ${adminName}\n\n✅ **Répondez "oui" pour confirmer l'envoi.**`;
+
+    const replyMsg = await message.reply({
+      body: fonts?.bold ? fonts.bold(confirmMsg) : confirmMsg,
+      attachment: fs.createReadStream(canvasImagePath)
+    });
+
+    if (fs.existsSync(canvasImagePath)) fs.unlinkSync(canvasImagePath);
 
     global.GoatBot.onReply.set(replyMsg.messageID, {
       commandName: this.config.name,
@@ -60,7 +221,8 @@ module.exports = {
       startTime,
       adminId: event.senderID,
       adminName,
-      messageID: replyMsg.messageID
+      messageID: replyMsg.messageID,
+      cleanMessage
     });
 
     setTimeout(() => {
@@ -73,17 +235,20 @@ module.exports = {
     }, 30000);
   },
 
-  onReply: async function ({ message, event, Reply, api, threadsData }) {
+  onReply: async function ({ message, event, Reply, api }) {
     if (Reply.author !== event.senderID) return;
     if (event.body.trim().toLowerCase() !== "oui") {
       return message.reply("❌ Envoi annulé.");
     }
 
-    const { prepared, allThreads, delayPerGroup, maxRetries, batchSize, startTime, adminId, adminName, messageID } = Reply;
+    const { prepared, allThreads, delayPerGroup, maxRetries, batchSize, startTime, adminId, adminName, messageID, cleanMessage } = Reply;
     message.unsend(messageID).catch(() => {});
     global.GoatBot.onReply.delete(messageID);
 
-    await message.reply(fonts?.bold ? fonts.bold(`📢 Début de l'envoi à ${allThreads.length} groupes...`) : `📢 Début de l'envoi à ${allThreads.length} groupes...`);
+    await message.reply(fonts?.bold ? fonts.bold(`📢 Transmission de l'annonce Canvas à ${allThreads.length} groupes...`) : `📢 Transmission de l'annonce Canvas à ${allThreads.length} groupes...`);
+
+    // Génération de la carte finale pour la diffusion globale
+    const canvasImagePath = await generateNotificationCanvas(adminId, adminName, cleanMessage);
 
     const results = await this.sendBulkNotifications({
       api,
@@ -94,11 +259,14 @@ module.exports = {
       adminName,
       delayPerGroup,
       maxRetries,
-      batchSize
+      batchSize,
+      canvasImagePath
     });
 
+    if (fs.existsSync(canvasImagePath)) fs.unlinkSync(canvasImagePath);
+
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    const resultMsg = `📢 Rapport d'envoi\n━━━━━━━━━━━━━━━━━━\n✅ Réussis : ${results.success.length}\n❌ Échecs : ${results.failed.length}\n⏱️ Temps : ${totalTime}s`;
+    const resultMsg = `📢 **RAPPORT DE DIFFUSION**\n━━━━━━━━━━━━━━━━━━\n✅ Réussis : ${results.success.length}\n❌ Échecs : ${results.failed.length}\n⏱️ Temps total : ${totalTime}s`;
     message.reply(fonts?.bold ? fonts.bold(resultMsg) : resultMsg);
   },
 
@@ -145,7 +313,7 @@ module.exports = {
     );
   },
 
-  async sendBulkNotifications({ api, threads, baseMessage, options, adminId, adminName, delayPerGroup, maxRetries, batchSize }) {
+  async sendBulkNotifications({ api, threads, baseMessage, options, adminId, adminName, delayPerGroup, maxRetries, batchSize, canvasImagePath }) {
     const results = { success: [], failed: [] };
 
     for (let i = 0; i < threads.length; i += batchSize) {
@@ -171,7 +339,8 @@ module.exports = {
             membersData,
             adminId,
             adminName,
-            maxRetries
+            maxRetries,
+            canvasImagePath
           });
 
           if (res.success) results.success.push(thread.threadID);
@@ -189,7 +358,7 @@ module.exports = {
     return results;
   },
 
-  async sendWithRetry({ api, threadID, body, rawAttachments, options, membersData, adminId, adminName, maxRetries }) {
+  async sendWithRetry({ api, threadID, body, rawAttachments, options, membersData, adminId, adminName, maxRetries, canvasImagePath }) {
     let lastError;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -204,10 +373,17 @@ module.exports = {
           mentions.push({ id: adminId, tag: adminTag, fromIndex: index });
         }
 
-        const formSend = { body: finalBody, mentions };
+        const formSend = { body: finalBody, mentions, attachment: [] };
 
+        // Ajout de la carte Canvas générée
+        if (canvasImagePath && fs.existsSync(canvasImagePath)) {
+          formSend.attachment.push(fs.createReadStream(canvasImagePath));
+        }
+
+        // Ajout des autres médias joints
         if (rawAttachments?.length) {
-          formSend.attachment = await getStreamsFromAttachment(rawAttachments);
+          const mediaStreams = await getStreamsFromAttachment(rawAttachments);
+          formSend.attachment.push(...(Array.isArray(mediaStreams) ? mediaStreams : [mediaStreams]));
         }
 
         if (options.tagAll && membersData) {
@@ -249,3 +425,4 @@ module.exports = {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 };
+        
