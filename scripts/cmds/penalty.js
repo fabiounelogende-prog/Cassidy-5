@@ -2030,4 +2030,4 @@ function safeDelete(filePath) {
   } catch (error) {
     // Ignore les erreurs de suppression du cache
   }
-}
+  }
