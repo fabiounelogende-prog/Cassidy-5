@@ -10,6 +10,7 @@ try {
   fonts = require("../../func/font.js");
 } catch (error) {}
 
+// Utilitaire de dessin d'un rectangle à coins arrondis
 function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
   ctx.moveTo(x + radius, y);
@@ -24,62 +25,98 @@ function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.closePath();
 }
 
+// Tronquer proprement le texte si la ligne déborde
 function truncateText(ctx, text, maxWidth) {
   if (ctx.measureText(text).width <= maxWidth) return text;
-  while (ctx.measureText(text + '...').width > maxWidth && text.length > 0) {
-    text = text.slice(0, -1);
+  let truncated = text;
+  while (ctx.measureText(truncated + '...').width > maxWidth && truncated.length > 0) {
+    truncated = truncated.slice(0, -1);
   }
-  return text + '...';
+  return truncated + '...';
 }
 
 // ==========================================
-// 🎨 MOTEUR CANVAS CYBER BROADCAST
+// 🎨 MOTEUR CANVAS CYBER/GLASS DESIGN
 // ==========================================
-async function generateNotificationCanvas(senderID, adminName, messageText) {
-  const width = 1000;
-  const height = 500;
+async function generateNotificationCanvas(senderID, adminName, messageText, groupImageUrl = null) {
+  const width = 1100;
+  const height = 550;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  // Couleurs dynamiques aléatoires
-  const randomHex = () => Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
-  const themeColor = `#${randomHex()}`;
-  const secondaryColor = `#${randomHex()}`;
+  // Palette Premium
+  const primaryColor = "#F43F5E";   // Rose Néon
+  const secondaryColor = "#8B5CF6"; // Violet Cyber
+  const accentColor = "#06B6D4";    // Cyan
 
-  // 1. Fond sombre dégradé
+  // 1. FOND DEGRADÉ PROFOND
   const bg = ctx.createLinearGradient(0, 0, width, height);
-  bg.addColorStop(0, '#05060a');
-  bg.addColorStop(0.5, '#0d101d');
-  bg.addColorStop(1, '#05060a');
+  bg.addColorStop(0, '#090D16');
+  bg.addColorStop(0.5, '#0F172A');
+  bg.addColorStop(1, '#1E1035');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);
 
-  // 2. Halo lumineux
-  const glow = ctx.createRadialGradient(200, 250, 10, 200, 250, 400);
-  glow.addColorStop(0, themeColor + '40');
-  glow.addColorStop(1, 'transparent');
-  ctx.fillStyle = glow;
-  ctx.fillRect(0, 0, width, height);
+  // Motif de grille futuriste (Grid lines)
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+  }
+  for (let y = 0; y < height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+  }
 
-  // 3. Cadre style Forteresse Cyber
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
-  drawRoundedRect(ctx, 25, 25, width - 50, height - 50, 20);
+  // 2. HALOS NÉONS AMBIANTS (GLOW EFFECTS)
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+
+  const glow1 = ctx.createRadialGradient(150, 150, 20, 150, 150, 350);
+  glow1.addColorStop(0, 'rgba(244, 63, 94, 0.25)');
+  glow1.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow1; ctx.fillRect(0, 0, width, height);
+
+  const glow2 = ctx.createRadialGradient(950, 400, 20, 950, 400, 350);
+  glow2.addColorStop(0, 'rgba(139, 92, 246, 0.25)');
+  glow2.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow2; ctx.fillRect(0, 0, width, height);
+
+  ctx.restore();
+
+  // 3. PANNEAU EN VERRE TRANSLUCIDE (GLASSMORPHISM)
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+  drawRoundedRect(ctx, 35, 35, width - 70, height - 70, 24);
   ctx.fill();
 
-  ctx.strokeStyle = themeColor;
+  // Contour lumineux dégradé
+  const borderGrad = ctx.createLinearGradient(0, 0, width, height);
+  borderGrad.addColorStop(0, primaryColor);
+  borderGrad.addColorStop(0.5, secondaryColor);
+  borderGrad.addColorStop(1, accentColor);
+  ctx.strokeStyle = borderGrad;
   ctx.lineWidth = 3;
-  drawRoundedRect(ctx, 25, 25, width - 50, height - 50, 20);
+  drawRoundedRect(ctx, 35, 35, width - 70, height - 70, 24);
   ctx.stroke();
 
-  // 4. Photo de Profil (Avatar Admin)
-  const avatarX = 180;
-  const avatarY = 250;
-  const avatarRadius = 105;
+  // 4. PHOTO DE PROFIL D'ADMINISTRATEUR (AVATAR)
+  const avatarX = 175;
+  const avatarY = 275;
+  const avatarRadius = 100;
 
+  // Ombre portée sous l'avatar
+  ctx.save();
+  ctx.shadowColor = primaryColor;
+  ctx.shadowBlur = 35;
+  ctx.beginPath();
+  ctx.arc(avatarX, avatarY, avatarRadius + 2, 0, Math.PI * 2);
+  ctx.fillStyle = primaryColor;
+  ctx.fill();
+  ctx.restore();
+
+  // Avatar découpé en cercle
   ctx.save();
   ctx.beginPath();
-  ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2, true);
-  ctx.closePath();
+  ctx.arc(avatarX, avatarY, avatarRadius, 0, Math.PI * 2);
   ctx.clip();
 
   const avatarUrl = `https://graph.facebook.com/${senderID}/picture?height=500&width=500&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
@@ -93,62 +130,120 @@ async function generateNotificationCanvas(senderID, adminName, messageText) {
   } catch (e) {}
 
   if (!imgLoaded) {
-    ctx.fillStyle = '#121624';
+    ctx.fillStyle = '#1E293B';
     ctx.fillRect(avatarX - avatarRadius, avatarY - avatarRadius, avatarRadius * 2, avatarRadius * 2);
-    ctx.fillStyle = themeColor;
-    ctx.font = 'bold 70px sans-serif';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = 'bold 60px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText("📢", avatarX, avatarY + 25);
+    ctx.fillText("📢", avatarX, avatarY + 20);
   }
   ctx.restore();
 
-  // Anneau néon
-  ctx.strokeStyle = themeColor;
-  ctx.lineWidth = 5;
+  // Double Anneau Cyber
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(avatarX, avatarY, avatarRadius + 3, 0, Math.PI * 2);
+  ctx.arc(avatarX, avatarY, avatarRadius + 2, 0, Math.PI * 2);
   ctx.stroke();
 
-  // 5. Contenu du Message & Header
+  // 5. PHOTO DU GROUPE (EN HAUT À DROITE SI DISPONIBLE)
+  if (groupImageUrl) {
+    const groupImgX = width - 155;
+    const groupImgY = 65;
+    const groupImgSize = 80;
+
+    ctx.save();
+    drawRoundedRect(ctx, groupImgX, groupImgY, groupImgSize, groupImgSize, 16);
+    ctx.clip();
+
+    try {
+      const gRes = await axios.get(groupImageUrl, { responseType: 'arraybuffer', timeout: 3000 });
+      const groupImg = await loadImage(Buffer.from(gRes.data));
+      ctx.drawImage(groupImg, groupImgX, groupImgY, groupImgSize, groupImgSize);
+    } catch (e) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.fillRect(groupImgX, groupImgY, groupImgSize, groupImgSize);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '30px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText("👥", groupImgX + 40, groupImgY + 50);
+    }
+    ctx.restore();
+
+    // Bordure néon de l'image du groupe
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, groupImgX, groupImgY, groupImgSize, groupImgSize, 16);
+    ctx.stroke();
+  }
+
+  // 6. EN-TÊTE & BADGE
   ctx.textAlign = 'left';
-  ctx.fillStyle = themeColor;
-  ctx.font = 'bold 36px sans-serif';
-  ctx.fillText("📢 BROADCAST SYSTEM", 330, 95);
 
-  // Badge d'administrateur
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-  drawRoundedRect(ctx, 330, 115, 280, 32, 8);
+  // Badge "OFFICIAL ANNOUNCEMENT"
+  ctx.fillStyle = 'rgba(244, 63, 94, 0.2)';
+  drawRoundedRect(ctx, 320, 75, 260, 32, 8);
   ctx.fill();
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = 1;
+  drawRoundedRect(ctx, 320, 75, 260, 32, 8);
+  ctx.stroke();
 
+  ctx.fillStyle = primaryColor;
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText("🔴 OFFICIAL ANNOUNCEMENT", 335, 96);
+
+  // Nom de l'expéditeur / Titre
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = 'bold 15px sans-serif';
-  ctx.fillText(`EXPÉDITEUR: ${adminName.toUpperCase()}`, 342, 136);
+  ctx.font = '900 32px sans-serif';
+  ctx.fillText(adminName.toUpperCase(), 320, 142);
 
-  // Ligne de séparation
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+  // Séparateur Lumineux
+  const lineGrad = ctx.createLinearGradient(320, 0, width - 70, 0);
+  lineGrad.addColorStop(0, primaryColor);
+  lineGrad.addColorStop(0.6, secondaryColor);
+  lineGrad.addColorStop(1, 'transparent');
+  ctx.strokeStyle = lineGrad;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(330, 165);
-  ctx.lineTo(width - 50, 165);
+  ctx.moveTo(320, 160);
+  ctx.lineTo(width - 80, 160);
   ctx.stroke();
 
-  // Zone de texte du message
-  ctx.fillStyle = '#E2E8F0';
-  ctx.font = '20px sans-serif';
-  
-  const rawLines = (messageText || "Annonce officielle de l'administration.").split('\n');
-  let y = 205;
-  const lineHeight = 30;
+  // 7. ZONE DE MESSAGE (BULLE MODERNE)
+  ctx.fillStyle = 'rgba(2, 6, 23, 0.4)';
+  drawRoundedRect(ctx, 320, 180, 700, 280, 16);
+  ctx.fill();
+
+  ctx.fillStyle = '#F8FAFC';
+  ctx.font = '21px sans-serif';
+
+  const rawLines = (messageText || "Annonce officielle du système.").split('\n');
+  let y = 222;
+  const lineHeight = 34;
+  const maxLineY = 420;
 
   for (let i = 0; i < rawLines.length; i++) {
-    if (y > 420) {
-      ctx.fillStyle = secondaryColor;
-      ctx.fillText("... [voir message complet]", 330, y);
+    if (y > maxLineY) {
+      ctx.fillStyle = accentColor;
+      ctx.font = 'italic bold 18px sans-serif';
+      ctx.fillText("💬 [Message complet ci-dessous...]", 345, y);
       break;
     }
-    ctx.fillText(truncateText(ctx, rawLines[i], 610), 330, y);
+    const currentLine = rawLines[i];
+    if (currentLine.trim().length === 0) {
+      y += 18;
+      continue;
+    }
+    ctx.fillText(truncateText(ctx, currentLine, 650), 345, y);
     y += lineHeight;
   }
+
+  // 8. FOOTER WATERMARK
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.font = '13px sans-serif';
+  ctx.fillText("BROADCAST SYSTEM v4.0 • POWERED BY CANVAS VIP", width - 60, height - 50);
 
   // Sauvegarde temporaire
   const tmpDir = path.join(__dirname, "cache");
@@ -162,8 +257,8 @@ module.exports = {
   config: {
     name: "notification",
     aliases: ["notify", "noti"],
-    version: "4.0",
-    author: "Christus + Canvas VIP",
+    version: "4.1.0",
+    author: "Christus & Celestin",
     countDown: 5,
     role: 4,
     description: "📢 Envoie une notification visuelle Canvas à tous les groupes",
@@ -190,6 +285,14 @@ module.exports = {
     }
 
     const adminName = (await api.getUserInfo(event.senderID))[event.senderID]?.name || "Administrateur";
+    
+    // Récupération de la photo du groupe actuel pour l'aperçu
+    let currentGroupImage = null;
+    try {
+      const threadInfo = await api.getThreadInfo(event.threadID);
+      currentGroupImage = threadInfo.imageSrc || threadInfo.thumbSrc || null;
+    } catch (e) {}
+
     const prepared = await this.prepareMessage({ event, message: cleanMessage, options, adminName });
 
     const allThreads = await this.getActiveThreads(threadsData, api);
@@ -197,8 +300,8 @@ module.exports = {
       return message.reply("❌ Aucun groupe actif trouvé.");
     }
 
-    // Génération de la carte d'aperçu
-    const canvasImagePath = await generateNotificationCanvas(event.senderID, adminName, cleanMessage);
+    // Génération de la carte d'aperçu Canvas
+    const canvasImagePath = await generateNotificationCanvas(event.senderID, adminName, cleanMessage, currentGroupImage);
 
     const confirmMsg = `📢 **ENVOI BROADCAST CANVAS**\n━━━━━━━━━━━━━━━━━━\n➜ ${allThreads.length} groupe(s) ciblé(s)\n➜ Délai : ${delayPerGroup} ms par groupe\n➜ Options : ${options.tagAll ? "Tag All" : "Standard"} ${options.pin ? "+ Épinglage" : ""}\n➜ Expéditeur : ${adminName}\n\n✅ **Répondez "oui" pour confirmer l'envoi.**`;
 
@@ -247,9 +350,6 @@ module.exports = {
 
     await message.reply(fonts?.bold ? fonts.bold(`📢 Transmission de l'annonce Canvas à ${allThreads.length} groupes...`) : `📢 Transmission de l'annonce Canvas à ${allThreads.length} groupes...`);
 
-    // Génération de la carte finale pour la diffusion globale
-    const canvasImagePath = await generateNotificationCanvas(adminId, adminName, cleanMessage);
-
     const results = await this.sendBulkNotifications({
       api,
       threads: allThreads,
@@ -260,10 +360,8 @@ module.exports = {
       delayPerGroup,
       maxRetries,
       batchSize,
-      canvasImagePath
+      cleanMessage
     });
-
-    if (fs.existsSync(canvasImagePath)) fs.unlinkSync(canvasImagePath);
 
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
     const resultMsg = `📢 **RAPPORT DE DIFFUSION**\n━━━━━━━━━━━━━━━━━━\n✅ Réussis : ${results.success.length}\n❌ Échecs : ${results.failed.length}\n⏱️ Temps total : ${totalTime}s`;
@@ -313,19 +411,26 @@ module.exports = {
     );
   },
 
-  async sendBulkNotifications({ api, threads, baseMessage, options, adminId, adminName, delayPerGroup, maxRetries, batchSize, canvasImagePath }) {
+  async sendBulkNotifications({ api, threads, baseMessage, options, adminId, adminName, delayPerGroup, maxRetries, batchSize, cleanMessage }) {
     const results = { success: [], failed: [] };
 
     for (let i = 0; i < threads.length; i += batchSize) {
       const batch = threads.slice(i, i + batchSize);
 
       for (const thread of batch) {
+        let canvasImagePath = null;
         try {
           let groupName = thread.threadName;
-          if (!groupName) {
+          let groupImage = null;
+
+          try {
             const info = await api.getThreadInfo(thread.threadID);
-            groupName = info.threadName || "Groupe inconnu";
-          }
+            groupName = groupName || info.threadName || "Groupe inconnu";
+            groupImage = info.imageSrc || info.thumbSrc || null;
+          } catch (e) {}
+
+          // Génération dynamique du Canvas pour chaque groupe avec sa propre photo de groupe
+          canvasImagePath = await generateNotificationCanvas(adminId, adminName, cleanMessage, groupImage);
 
           let personalizedBody = `${baseMessage.bodyTemplate}\n🏷️ Groupe : ${groupName}\n🔗 ID : ${thread.threadID}\n\n`;
           
@@ -349,6 +454,10 @@ module.exports = {
           await this.delay(delayPerGroup);
         } catch {
           results.failed.push(thread.threadID);
+        } finally {
+          if (canvasImagePath && fs.existsSync(canvasImagePath)) {
+            fs.unlinkSync(canvasImagePath);
+          }
         }
       }
 
@@ -375,12 +484,10 @@ module.exports = {
 
         const formSend = { body: finalBody, mentions, attachment: [] };
 
-        // Ajout de la carte Canvas générée
         if (canvasImagePath && fs.existsSync(canvasImagePath)) {
           formSend.attachment.push(fs.createReadStream(canvasImagePath));
         }
 
-        // Ajout des autres médias joints
         if (rawAttachments?.length) {
           const mediaStreams = await getStreamsFromAttachment(rawAttachments);
           formSend.attachment.push(...(Array.isArray(mediaStreams) ? mediaStreams : [mediaStreams]));
@@ -425,4 +532,4 @@ module.exports = {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 };
-        
+  
