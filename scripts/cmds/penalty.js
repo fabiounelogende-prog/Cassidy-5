@@ -4,19 +4,15 @@ const path = require("path");
 
 global.penaltyGames = global.penaltyGames || new Map();
 
-const REAL_ASSETS = {
-  stadium: "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?q=80&w=1600&auto=format&fit=crop"
-};
-
 module.exports = {
   config: {
     name: "penalty",
-    version: "9.0.0",
+    version: "10.0.0",
     author: "Célestin Olua",
     countDown: 2,
     role: 0,
-    shortDescription: "Simulation réaliste de Penalty EA SPORTS FC",
-    longDescription: "Jeu de penalty sans profil utilisateur avec paramètres avancés : distance, puissance, hauteur, effet, feinte, vent et précision.",
+    shortDescription: "Simulation de Penalty Retro Arcade",
+    longDescription: "Jeu de penalty 2D avec rendu graphique arcade style rétro.",
     category: "game",
     guide: "{pn} <distance>\nExemple : {pn} 11"
   },
@@ -35,7 +31,7 @@ module.exports = {
       );
     }
 
-    const windSpeed = Math.floor(Math.random() * 25); // km/h
+    const windSpeed = Math.floor(Math.random() * 25);
     const windDir = ["NORD", "SUD", "EST", "OUEST"][Math.floor(Math.random() * 4)];
     const pressure = Math.min(100, Math.floor((distance / 11) * 20));
 
@@ -112,17 +108,16 @@ module.exports = {
     let missReason = null;
     let isGoal = false;
 
-    // Physique du tir
     if (power > 88 && Math.random() < (power - 80) * 0.04) {
-      missReason = "BARRE / AU-DESSUS (Trop de puissance)";
+      missReason = "BARRE / AU-DESSUS";
     } else if (distance > 15 && (windSpeed > 15 || pressure > 50) && Math.random() < 0.15) {
-      missReason = "POTEAU / À CÔTÉ (Déviation par le vent et la pression)";
+      missReason = "POTEAU / À CÔTÉ";
     } else if (runup === "feinte" && Math.random() < 0.25) {
-      missReason = "ARRÊTÉ (Élan feinté anticipé par le gardien)";
+      missReason = "ARRÊTÉ PAR LE GARDIEN";
     } else {
       if (selectedDir !== keeperChoice) {
         if (selectedHeight === "panenka" && keeperChoice === "centre") {
-          missReason = "ARRÊTÉ (Panenka captée au centre)";
+          missReason = "CAPTÉ AU CENTRE";
         } else {
           isGoal = true;
         }
@@ -172,18 +167,15 @@ module.exports = {
         `📏 Distance : ${distance}m\n` +
         `💥 Puissance : ${power} %\n` +
         `🎯 Trajectoire : ${selectedDir} (${selectedHeight})\n` +
-        `🌀 Effet : ${spin} | Élan : ${runup}\n` +
-        `🧤 Gardien parti à : ${keeperChoice}\n` +
-        `💰 Gain : +${prizeMoney} $\n\n` +
-        `🎮 EA SPORTS FC • PENALTY MASTER`;
+        `🧤 Gardien : ${keeperChoice}\n` +
+        `💰 Gain : +${prizeMoney} $`;
     } else {
       resultText =
         `💥 𝐓𝐈𝐑 𝐌𝐀𝐍𝐐𝐔𝐄́ / 𝐏𝐀𝐑𝐀𝐃𝐄 !\n\n` +
-        `❌ Résultat : ${missReason || "Arrêt du gardien"}\n` +
+        `❌ Raison : ${missReason || "Arrêt du gardien"}\n` +
         `📏 Distance : ${distance}m\n` +
         `🎯 Tir : ${selectedDir} | Puissance : ${power}%\n` +
-        `🧤 Gardien : ${keeperChoice}\n\n` +
-        `😈 Ajuste tes paramètres et retente ta chance !`;
+        `🧤 Gardien : ${keeperChoice}`;
     }
 
     return api.sendMessage(
@@ -199,158 +191,177 @@ module.exports = {
 };
 
 /* ============================================================
-   RENDU VISUEL CANVAS (UNIQUEMENT LE TERRAIN ET LA CAGE)
+   RENDU VISUEL CANVAS (STYLE 2D ARCADE RETRO EXACT)
 ============================================================ */
 
 async function renderPenaltyCanvas(senderID, shotDetails, playerDir, keeperDir, gameState) {
-  const W = 1280;
-  const H = 720;
+  const W = 800;
+  const H = 600;
 
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = false;
 
-  // Ciel / Arrière-plan
-  const sky = ctx.createLinearGradient(0, 0, 0, 380);
-  sky.addColorStop(0, "#111827");
-  sky.addColorStop(0.5, "#1f2937");
-  sky.addColorStop(1, "#374151");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, W, H);
+  // 1. Arrière-plan : Tribunes / Public
+  ctx.fillStyle = "#1e293b";
+  ctx.fillRect(0, 0, W, 80);
 
-  // Stade
-  try {
-    const stadium = await loadImage(REAL_ASSETS.stadium);
-    ctx.save();
-    ctx.globalAlpha = 0.85;
-    ctx.drawImage(stadium, 0, 0, W, 350);
-    ctx.restore();
-  } catch (_) {}
+  // Silhouettes de supporters
+  ctx.fillStyle = "#0f172a";
+  for (let x = 0; x < W; x += 15) {
+    const h = 20 + (x % 7) * 4;
+    ctx.beginPath();
+    ctx.arc(x + 7, 80 - h, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(x + 3, 80 - h, 8, h);
+  }
 
-  // Projecteurs
-  drawLighting(ctx, W);
+  // Mur gris sous la tribune
+  ctx.fillStyle = "#94a3b8";
+  ctx.fillRect(0, 80, W, 30);
+  ctx.fillStyle = "#64748b";
+  ctx.fillRect(0, 108, W, 2);
 
-  // Pelouse
-  const pitchY = 330;
-  const grass = ctx.createLinearGradient(0, pitchY, 0, H);
-  grass.addColorStop(0, "#22c55e");
-  grass.addColorStop(0.5, "#16a34a");
-  grass.addColorStop(1, "#15803d");
-  ctx.fillStyle = grass;
-  ctx.fillRect(0, pitchY, W, H - pitchY);
+  // 2. Terrain / Pelouse à rayures horizontales
+  const pitchY = 110;
+  const stripeHeight = 45;
+  let isDark = false;
 
-  // Lignes du terrain & Surface de réparation
-  ctx.strokeStyle = "rgba(255,255,255,0.85)";
-  ctx.lineWidth = 3;
+  for (let y = pitchY; y < H; y += stripeHeight) {
+    ctx.fillStyle = isDark ? "#48bb78" : "#38a169";
+    ctx.fillRect(0, y, W, Math.min(stripeHeight, H - y));
+    isDark = !isDark;
+  }
+
+  // Lignes blanches du terrain
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 4;
+
+  // Ligne de but
   ctx.beginPath();
-  ctx.moveTo(330, 330);
-  ctx.lineTo(950, 330);
-  ctx.lineTo(1080, H);
-  ctx.lineTo(200, H);
-  ctx.closePath();
+  ctx.moveTo(50, 210);
+  ctx.lineTo(750, 210);
   ctx.stroke();
 
-  // Point de penalty
-  ctx.fillStyle = "#fff";
+  // Ligne médiane / Surface
   ctx.beginPath();
-  ctx.arc(640, 520, 5, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.moveTo(0, 360);
+  ctx.lineTo(W, 360);
+  ctx.stroke();
 
-  // Cage de but
-  const gx = 425, gy = 195, gw = 430, gh = 170;
-  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  // Demi-cercle de la surface de réparation (bas)
+  ctx.beginPath();
+  ctx.arc(400, 470, 260, Math.PI * 0.12, Math.PI * 0.88);
+  ctx.stroke();
+
+  // 3. Cage de But 2D
+  const gx = 140, gy = 20, gw = 520, gh = 190;
+
+  // Filet de but (quadrillage)
+  ctx.strokeStyle = "#cbd5e1";
   ctx.lineWidth = 1;
-  for (let x = gx; x <= gx + gw; x += 15) {
+  for (let x = gx; x <= gx + gw; x += 16) {
     ctx.beginPath();
     ctx.moveTo(x, gy);
     ctx.lineTo(x, gy + gh);
     ctx.stroke();
   }
-  for (let y = gy; y <= gy + gh; y += 13) {
+  for (let y = gy; y <= gy + gh; y += 14) {
     ctx.beginPath();
     ctx.moveTo(gx, y);
     ctx.lineTo(gx + gw, y);
     ctx.stroke();
   }
+
+  // Poteaux & Barre transversale
   ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 8;
   ctx.strokeRect(gx, gy, gw, gh);
 
-  // Gardien de but (Stylisé)
-  let kx = 640, ky = 295;
-  if (gameState !== "AIMING" && keeperDir) {
-    if (keeperDir.includes("gauche")) kx = 480;
-    if (keeperDir.includes("droite")) kx = 800;
-  }
-  ctx.fillStyle = "#facc15";
+  // Étais arrière du filet
+  ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.arc(kx, ky - 25, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillRect(kx - 18, ky - 10, 36, 45);
-
-  // Trajectoire & Ballon
-  let ballX = 640;
-  let ballY = 520;
-
-  if (gameState !== "AIMING" && playerDir) {
-    ballY = (shotDetails.height === "lucarne" || playerDir.includes("lucarne")) ? 220 : 310;
-    if (playerDir.includes("gauche")) ballX = 480;
-    if (playerDir === "centre") ballX = 640;
-    if (playerDir.includes("droite")) ballX = 800;
-
-    // Trait de trajectoire
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(640, 520);
-    ctx.lineTo(ballX, ballY);
-    ctx.stroke();
-  }
-
-  // Dessin du Ballon
-  const ballGrad = ctx.createRadialGradient(ballX - 3, ballY - 4, 2, ballX, ballY, 14);
-  ballGrad.addColorStop(0, "#ffffff");
-  ballGrad.addColorStop(1, "#9ca3af");
-  ctx.fillStyle = ballGrad;
-  ctx.beginPath();
-  ctx.arc(ballX, ballY, 14, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = "#000";
-  ctx.lineWidth = 1;
+  ctx.moveTo(gx, gy);
+  ctx.lineTo(120, 10);
+  ctx.lineTo(120, 210);
   ctx.stroke();
 
-  // Overlay HUD (Saisie & Mesures)
-  ctx.fillStyle = "rgba(0,0,0,0.75)";
-  ctx.fillRect(0, 0, W, 60);
+  ctx.beginPath();
+  ctx.moveTo(gx + gw, gy);
+  ctx.lineTo(680, 10);
+  ctx.lineTo(680, 210);
+  ctx.stroke();
 
-  ctx.fillStyle = "#facc15";
-  ctx.font = "bold 22px Arial";
-  ctx.textAlign = "left";
-  ctx.fillText("EA SPORTS FC • SIMULATOR", 30, 38);
+  // 4. Gardien de But Stylisé
+  let kx = 400, ky = 165;
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "14px Arial";
-  ctx.textAlign = "right";
-  const hudInfo = gameState === "AIMING"
-    ? `DISTANCE: ${shotDetails.distance}M  |  VENT: ${shotDetails.windSpeed}KM/H  |  PRESSION: ${shotDetails.pressure}%`
-    : `TIR: ${shotDetails.dir.toUpperCase()}  |  FORCE: ${shotDetails.power}%  |  GARDIEN: ${shotDetails.keeperChoice.toUpperCase()}`;
-  ctx.fillText(hudInfo, W - 30, 38);
+  if (gameState !== "AIMING" && keeperDir) {
+    if (keeperDir.includes("gauche")) kx = 260;
+    if (keeperDir.includes("droite")) kx = 540;
+  }
 
-  // Écriture du résultat sur l'image
+  drawKeeper(ctx, kx, ky);
+
+  // 5. Tireur (Joueur en bas à gauche)
+  drawShooter(ctx, 80, 480);
+
+  // 6. Ballon de football
+  let ballX = 400;
+  let ballY = 510;
+
+  if (gameState !== "AIMING" && playerDir) {
+    if (playerDir.includes("gauche")) ballX = 260;
+    if (playerDir === "centre") ballX = 400;
+    if (playerDir.includes("droite")) ballX = 540;
+
+    ballY = (shotDetails.height === "lucarne" || playerDir.includes("lucarne")) ? 70 : 170;
+  }
+
+  drawBall(ctx, ballX, ballY);
+
+  // 7. Overlay RÉSULTAT OVERLAY ("GOAL!!!" / "MISSED!")
   if (gameState === "GOAL") {
-    ctx.fillStyle = "rgba(34, 197, 94, 0.3)";
-    ctx.fillRect(0, 0, W, H);
+    // Bannière Arc-en-ciel / Gradient
+    const banner = ctx.createLinearGradient(0, 180, 0, 310);
+    banner.addColorStop(0, "rgba(239, 68, 68, 0.85)");
+    banner.addColorStop(0.5, "rgba(245, 158, 11, 0.85)");
+    banner.addColorStop(1, "rgba(34, 197, 94, 0.85)");
+    ctx.fillStyle = banner;
+    ctx.fillRect(0, 180, W, 130);
+
+    // Texte GOAL!!!
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 80px Arial";
+    ctx.strokeStyle = "#1d4ed8";
+    ctx.lineWidth = 10;
+    ctx.font = "900 85px 'Arial Black', Impact, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("GOAL !", W / 2, H / 2);
+    ctx.strokeText("GOAL!!!", W / 2, 275);
+    ctx.fillText("GOAL!!!", W / 2, 275);
+
+    // Confettis
+    const colors = ["#ef4444", "#3b82f6", "#eab308", "#10b981", "#ec4899"];
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.fillRect(
+        Math.random() * W,
+        180 + Math.random() * 130,
+        8 + Math.random() * 8,
+        8 + Math.random() * 8
+      );
+    }
   } else if (gameState === "SAVED") {
-    ctx.fillStyle = "rgba(239, 68, 68, 0.3)";
-    ctx.fillRect(0, 0, W, H);
+    // Bandeau sombre pour l'échec
+    ctx.fillStyle = "rgba(15, 23, 42, 0.75)";
+    ctx.fillRect(0, 200, W, 110);
+
+    // Texte MISSED!
     ctx.fillStyle = "#ffffff";
-    ctx.font = "bold 70px Arial";
+    ctx.strokeStyle = "#000000";
+    ctx.lineWidth = 8;
+    ctx.font = "900 80px 'Arial Black', Impact, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("MANQUÉ !", W / 2, H / 2);
+    ctx.strokeText("MISSED!", W / 2, 280);
+    ctx.fillText("MISSED!", W / 2, 280);
   }
 
   const cacheDir = path.join(__dirname, "cache");
@@ -361,17 +372,70 @@ async function renderPenaltyCanvas(senderID, shotDetails, playerDir, keeperDir, 
   return cachePath;
 }
 
-function drawLighting(ctx, W) {
-  const lights = [150, W - 150];
-  for (const x of lights) {
-    const glow = ctx.createRadialGradient(x, 50, 5, x, 50, 120);
-    glow.addColorStop(0, "rgba(255,255,255,0.4)");
-    glow.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(x, 50, 120, 0, Math.PI * 2);
-    ctx.fill();
-  }
+// Dessin du Gardien Stylisé (Orange/Bleu)
+function drawKeeper(ctx, x, y) {
+  // Tête (Blond)
+  ctx.fillStyle = "#facc15";
+  ctx.beginPath();
+  ctx.arc(x, y - 22, 11, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Corps / Maillot Orange
+  ctx.fillStyle = "#f97316";
+  ctx.fillRect(x - 16, y - 10, 32, 26);
+
+  // Bras écartés
+  ctx.fillRect(x - 28, y - 8, 12, 10);
+  ctx.fillRect(x + 16, y - 8, 12, 10);
+
+  // Short Bleu
+  ctx.fillStyle = "#2563eb";
+  ctx.fillRect(x - 15, y + 16, 14, 14);
+  ctx.fillRect(x + 1, y + 16, 14, 14);
+
+  // Chaussettes / Chaussures
+  ctx.fillStyle = "#ea580c";
+  ctx.fillRect(x - 12, y + 30, 8, 12);
+  ctx.fillRect(x + 4, y + 30, 8, 12);
+}
+
+// Dessin du Tireur (Noir/Blanc)
+function drawShooter(ctx, x, y) {
+  // Tête (Blond)
+  ctx.fillStyle = "#facc15";
+  ctx.beginPath();
+  ctx.arc(x + 12, y - 24, 13, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Maillot Noir
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x, y - 10, 24, 30);
+
+  // Short Blanc
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x, y + 20, 24, 16);
+
+  // Jambes / Chaussettes
+  ctx.fillStyle = "#0f172a";
+  ctx.fillRect(x + 2, y + 36, 8, 22);
+  ctx.fillRect(x + 14, y + 36, 8, 22);
+}
+
+// Dessin du Ballon Rétro (Noir et Blanc)
+function drawBall(ctx, x, y) {
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(x, y, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#000000";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Motif pentagone intérieur
+  ctx.fillStyle = "#000000";
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function safeDelete(filePath) {
