@@ -77,12 +77,13 @@
       "siteKey": "6LfH6HQrAAAAACmNc3LTiJFLiUvMpFblCUqj6pd1",
       "secretKey": "6LfH6HQrAAAAAEhnFm96bt-CeDuXcAGDFKeWPVEq"
     },
-    "githubToken": "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"
+    "githubToken": "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",
+    "githubWebhookSecret": "MonSecretSuperSecurise123!"
   },
   "githubRepository": {
     "enable": true,
-    "repoOwner": "https://github.com/fabiounelogende-prog",
-    "repoName": "https://github.com/fabiounelogende-prog/Cassidy-5",
+    "repoOwner": "fabiounelogende-prog",
+    "repoName": "Cassidy-5",
     "branch": "main",
     "notes": "Si 'enable' est defini sur true, le bot verifiera l'acces au depot via le token fourni dans credentials.githubToken"
   },
