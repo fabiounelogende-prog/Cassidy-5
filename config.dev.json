@@ -16,13 +16,27 @@
     "enable": false,
     "ignoreCommand": []
   },
-  "creator": ["61591895887142"],
-  "developer": ["61591895887142"],
-  "adminBot": ["61591895887142"],
-  "premium": ["61591895887142"],
-  "vipuser": ["61591895887142"],
-  "premiumUsers": ["61591895887142"],
-  "devUsers": ["61591895887142"],
+  "creator": [
+    "61591895887142"
+  ],
+  "developer": [
+    "61591895887142"
+  ],
+  "adminBot": [
+    "61591895887142"
+  ],
+  "premium": [
+    "61591895887142"
+  ],
+  "vipuser": [
+    "61591895887142"
+  ],
+  "premiumUsers": [
+    "61591895887142"
+  ],
+  "devUsers": [
+    "61591895887142"
+  ],
   "developerOnly": {
     "enable": false,
     "ignoreCommand": []
@@ -45,12 +59,33 @@
   "noPrefix": true,
   "database": {
     "type": "mongodb",
-    "uriMongodb": "mongodb+srv://<USER>:<PASSWORD>@cluster0.cyattib.mongodb.net/OZADNOOB1?retryWrites=true&w=majority&appName=Cluster0",
+    "uriMongodb": "mongodb+srv://Hinata:W2fNh.H9iWFU22F@cluster0.cyattib.mongodb.net/OZADNOOB1?retryWrites=true&w=majority&appName=Cluster0",
     "autoSyncWhenStart": false,
     "autoRefreshThreadInfoFirstTime": true,
     "notes": "(1) type selects 'json' or 'sqlite' or 'mongodb'. If you choose mongodb, enter uri connect mongodb in the uriMongodb section, instructions to get uri connect mongodb at: https://youtu.be/z1f9urHW5xY. I recommend using 'mongodb' or 'sqlite', json is not recommended because it is not stable. (2) when you set autoSyncWhenStart to true, the bot will automatically synchronize the data in the database when starting the bot, this will make the bot start slower. (3) when you set autoRefreshThreadInfoFirstTime to true, the bot will automatically refresh the thread information when get first message from the thread since starting the bot"
   },
   "timeZone": "Asia/Dhaka",
+  "credentials": {
+    "gmailAccount": {
+      "email": "romeobot555@gmail.com",
+      "clientId": "938512788954-ndaggmsbqkf0a6ougkc7p0iek446ikt1.apps.googleusercontent.com",
+      "clientSecret": "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",
+      "refreshToken": "1//046ZXiqfQpbF1CgYIARAAGAQSNwF-L9Ir8uPenmtD9Co8psKc7goPgaxSfYG_TJreIbnB1mKgwC0vKP9t4Ir-kxjf-YMNGd124TQ",
+      "apiKey": ""
+    },
+    "gRecaptcha": {
+      "siteKey": "6LfH6HQrAAAAACmNc3LTiJFLiUvMpFblCUqj6pd1",
+      "secretKey": "6LfH6HQrAAAAAEhnFm96bt-CeDuXcAGDFKeWPVEq"
+    },
+    "githubToken": "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"
+  },
+  "githubRepository": {
+    "enable": true,
+    "repoOwner": "https://github.com/fabiounelogende-prog",
+    "repoName": "https://github.com/fabiounelogende-prog/Cassidy-5",
+    "branch": "main",
+    "notes": "Si 'enable' est defini sur true, le bot verifiera l'acces au depot via le token fourni dans credentials.githubToken"
+  },
   "dashBoard": {
     "enable": true,
     "expireVerifyCode": 300000,
@@ -141,12 +176,11 @@
     "selfListenEvent": true,
     "autoMarkDelivery": false,
     "autoReconnect": false,
-    "notes": "Document here: https://github.com/ntkhang03/fb-chat-api/blob/master/DOCS.md#apisetoptionsoptions"
+    "notes": "Document here: https://github.com/ntkhang03/fb-chat-api/blob/master/DOCS.md#apisetoptionsoptions "
   },
   "notifyAdminOnDeploy": {
     "enable": true,
     "message": "✅ {botName} vient d'être déployé avec succès et est maintenant en ligne.\n🕒 {time}\n🆔 Bot ID: {botID}",
     "notes": "Si enable est true, le bot envoie un message en PV à chaque ID de adminBot dès qu'il démarre/est déployé. Le message peut contenir {botName}, {time} et {botID}."
-  },
-  "githubToken": "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"
+  }
 }
