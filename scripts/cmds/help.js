@@ -1,326 +1,371 @@
-const { createCanvas, loadImage } = require('canvas');
-const fs = require('fs-extra');
-const path = require('path');
+const { createCanvas, loadImage } = require("canvas");
+const fs = require("fs-extra");
+const path = require("path");
+
+const PAL = [["#ff2e93", "#7c4dff"], ["#00d4ff", "#0057ff"], ["#00ffb3", "#00b0ff"], ["#ffcc33", "#ff6a3d"], ["#c06eff", "#ff6ec7"], ["#2bffc9", "#6a5bff"]];
+const ROLES = ["Tous les membres", "Admins du groupe", "Admins du bot"];
+
+function theme(basic) {
+  const [a, b] = PAL[Math.floor(Math.random() * PAL.length)];
+  return basic
+    ? { bg: "#0f172a", bg2: "#1e293b", a: "#64748b", b: "#94a3b8", card: "#1e293b", border: "#334155", sub: "#94a3b8", label: "MODE BASIQUE", dim: 0.12 }
+    : { bg: "#0a0e1a", bg2: "#140a2e", a, b, card: "rgba(255,255,255,0.05)", border: a, sub: "#a8b3cf", label: "MODE ARCADE", dim: 0.35 };
+}
+
+const txt = (v) => (!v ? "" : typeof v === "string" ? v : v.fr || v.en || Object.values(v)[0] || "");
+
+function hex(ctx, x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 3) * i - Math.PI / 6;
+    i ? ctx.lineTo(x + r * Math.cos(a), y + r * Math.sin(a)) : ctx.moveTo(x + r * Math.cos(a), y + r * Math.sin(a));
+  }
+  ctx.closePath();
+}
+
+function nid(ctx, cx, cy, R, r, col) {
+  const dx = Math.sqrt(3) * r, n = Math.ceil(R / (1.5 * r)) + 1;
+  ctx.save();
+  ctx.strokeStyle = col;
+  ctx.lineWidth = 1.5;
+  for (let j = -n; j <= n; j++) for (let i = -n; i <= n; i++) {
+    const x = cx + i * dx + (Math.abs(j) % 2 ? dx / 2 : 0), y = cy + j * 1.5 * r, d = Math.hypot(x - cx, y - cy);
+    if (d > R) continue;
+    ctx.globalAlpha = 0.3 * (1 - d / R);
+    hex(ctx, x, y, r - 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function losange(ctx, x, y, t, c) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = c;
+  ctx.shadowColor = c;
+  ctx.shadowBlur = 10;
+  ctx.fillRect(-t / 2, -t / 2, t, t);
+  ctx.restore();
+}
+
+function barre(ctx, xf, y, page, total, th) {
+  if (total > 20) return;
+  const gap = 6, w = Math.max(8, Math.min(26, Math.floor((330 - gap * (total - 1)) / total)));
+  const x0 = xf - (total * w + (total - 1) * gap);
+  ctx.save();
+  ctx.fillStyle = th.sub;
+  ctx.font = "bold 13px Sans-Serif";
+  ctx.textAlign = "right";
+  ctx.fillText("PROGRESSION", xf, y - 10);
+  ctx.textAlign = "left";
+  for (let i = 0; i < total; i++) {
+    const x = x0 + i * (w + gap);
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, 14, 4);
+    if (i < page) {
+      const g = ctx.createLinearGradient(x, 0, x + w, 0);
+      g.addColorStop(0, th.a);
+      g.addColorStop(1, th.b);
+      ctx.fillStyle = g;
+      ctx.shadowColor = th.a;
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else {
+      ctx.strokeStyle = th.b;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+}
+
+function wrap(ctx, text, w, max) {
+  const out = [];
+  String(text || "").split("\n").forEach((p) => {
+    let l = "";
+    p.split(" ").forEach((m) => {
+      while (ctx.measureText(m).width > w && m.length > 1) {
+        let k = m.length - 1;
+        while (k > 1 && ctx.measureText(m.slice(0, k)).width > w) k--;
+        if (l) { out.push(l); l = ""; }
+        out.push(m.slice(0, k));
+        m = m.slice(k);
+      }
+      const t = l ? l + " " + m : m;
+      if (ctx.measureText(t).width > w && l) { out.push(l); l = m; } else l = t;
+    });
+    out.push(l);
+  });
+  if (out.length > max) { out.length = max; out[max - 1] = out[max - 1].replace(/.{0,3}$/, "") + "..."; }
+  return out;
+}
+
+function fit(ctx, t, w, size, min) {
+  for (; size > min; size--) {
+    ctx.font = `bold ${size}px Sans-Serif`;
+    if (ctx.measureText(t).width <= w) return t;
+  }
+  ctx.font = `bold ${min}px Sans-Serif`;
+  if (ctx.measureText(t).width > w) {
+    while (t.length > 1 && ctx.measureText(t + "...").width > w) t = t.slice(0, -1);
+    t += "...";
+  }
+  return t;
+}
+
+function carte(ctx, x, y, w, h, th) {
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = th.card;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 12);
+  ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = th.border;
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 12);
+  ctx.stroke();
+  const g = ctx.createLinearGradient(0, y + 14, 0, y + h - 14);
+  g.addColorStop(0, th.a);
+  g.addColorStop(1, th.b);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(x + 12, y + 14, 7, h - 28, 3);
+  ctx.fill();
+}
+
+function info(ctx, x, y, w, th, t, v) {
+  carte(ctx, x, y, w, 84, th);
+  ctx.fillStyle = th.a;
+  ctx.font = "bold 14px Sans-Serif";
+  ctx.fillText(t, x + 34, y + 30);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(fit(ctx, String(v), w - 56, 24, 13), x + 34, y + 62);
+}
+
+function bloc(ctx, y, h, t, lignes, taille, pas, th) {
+  carte(ctx, 50, y, 1100, h, th);
+  ctx.fillStyle = th.a;
+  ctx.font = "bold 14px Sans-Serif";
+  ctx.fillText(t, 84, y + 34);
+  ctx.fillStyle = "#fff";
+  ctx.font = `${taille}px Sans-Serif`;
+  lignes.forEach((l, i) => ctx.fillText(l, 84, y + 70 + i * pas));
+}
+
+function pied(ctx, W, H, th, t) {
+  ctx.strokeStyle = th.b;
+  ctx.globalAlpha = 0.4;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(50, H - 70);
+  ctx.lineTo(W - 50, H - 70);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = th.sub;
+  ctx.font = "18px Sans-Serif";
+  ctx.fillText(t, 50, H - 38);
+}
+
+// Fond, décor, cadre, avatar et en-tête communs au menu et au détail
+async function base(W, H, th, titre, sous, usersData, uid) {
+  const canvas = createCanvas(W, H), ctx = canvas.getContext("2d");
+  let g = ctx.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, th.bg);
+  g.addColorStop(1, th.bg2);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < W; i += 40) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, H); ctx.stroke(); }
+  for (let i = 0; i < H; i += 40) { ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(W, i); ctx.stroke(); }
+  ctx.globalAlpha = th.dim;
+  [[W, 0, 520, th.a], [0, H, 480, th.b]].forEach(([x, y, r, c]) => {
+    g = ctx.createRadialGradient(x, y, 10, x, y, r);
+    g.addColorStop(0, c);
+    g.addColorStop(1, "transparent");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 7);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  nid(ctx, W, 0, 380, 26, th.a);
+  nid(ctx, 0, H, 380, 26, th.b);
+  ctx.strokeStyle = th.a;
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(18, 18, W - 36, H - 36, 18);
+  ctx.stroke();
+  ctx.strokeStyle = th.b;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(26, 26, W - 52, H - 52, 14);
+  ctx.stroke();
+  try {
+    const img = await loadImage(await usersData.getAvatarUrl(uid));
+    ctx.save();
+    hex(ctx, 95, 95, 48);
+    ctx.clip();
+    ctx.drawImage(img, 47, 47, 96, 96);
+    ctx.restore();
+    g = ctx.createLinearGradient(47, 47, 143, 143);
+    g.addColorStop(0, th.a);
+    g.addColorStop(1, th.b);
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 4;
+    hex(ctx, 95, 95, 50);
+    ctx.stroke();
+  } catch {}
+  ctx.fillStyle = "#fff";
+  ctx.font = "bold 44px Sans-Serif";
+  ctx.shadowColor = th.a;
+  ctx.shadowBlur = th.dim > 0.2 ? 18 : 0;
+  ctx.fillText(titre, 175, 78);
+  ctx.shadowBlur = 0;
+  g = ctx.createLinearGradient(175, 0, 355, 0);
+  g.addColorStop(0, th.a);
+  g.addColorStop(1, th.b);
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(175, 92, 180, 30, 8);
+  ctx.fill();
+  ctx.fillStyle = th.bg;
+  ctx.font = "bold 14px Sans-Serif";
+  ctx.fillText(th.label, 191, 113);
+  ctx.fillStyle = th.sub;
+  ctx.font = "20px Sans-Serif";
+  ctx.fillText(sous, 50, 185);
+  ctx.strokeStyle = th.a;
+  ctx.globalAlpha = 0.5;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(50, 200);
+  ctx.lineTo(W - 50, 200);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+  losange(ctx, 50, 200, 10, th.a);
+  losange(ctx, W - 50, 200, 10, th.b);
+  return { canvas, ctx };
+}
+
+async function menu({ list, all, page, total, prefix, th, usersData, uid }) {
+  const W = 1200, rows = Math.ceil(list.length / 4) || 1, H = Math.max(820, 222 + rows * 98 + 130);
+  const { canvas, ctx } = await base(W, H, th, "CENTRE D'AIDE", `Total : ${all} commandes  •  Page ${page}/${total}`, usersData, uid);
+  barre(ctx, 1150, 105, page, total, th);
+  list.forEach((n, i) => {
+    const x = 50 + (i % 4) * 278, y = 222 + Math.floor(i / 4) * 98;
+    carte(ctx, x, y, 258, 80, th);
+    ctx.fillStyle = "#fff";
+    ctx.fillText(fit(ctx, prefix + n, 210, 24, 12), x + 34, y + 48);
+  });
+  pied(ctx, W, H, th, `${prefix}help [page]  •  ${prefix}help [commande] pour les détails (ex : ${prefix}help art)`);
+  return canvas.toBuffer("image/png");
+}
+
+async function detail({ c, desc, g, al, role, prefix, th, usersData, uid }) {
+  const W = 1200, m = createCanvas(1, 1).getContext("2d");
+  m.font = "24px Sans-Serif";
+  const L1 = wrap(m, desc, 1040, 5);
+  m.font = "22px Sans-Serif";
+  const L2 = wrap(m, g, 1040, 7);
+  const h1 = 64 + L1.length * 32, h2 = 64 + L2.length * 30, y4 = 540, y5 = y4 + h1 + 20;
+  const H = Math.max(700, y5 + h2 + 110);
+  const { canvas, ctx } = await base(W, H, th, "DÉTAIL DE LA COMMANDE", "Informations et utilisation", usersData, uid);
+  carte(ctx, 50, 222, 1100, 90, th);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(fit(ctx, prefix + c.name, 840, 44, 20), 84, 282);
+  const p = ctx.createLinearGradient(970, 0, 1120, 0);
+  p.addColorStop(0, th.a);
+  p.addColorStop(1, th.b);
+  ctx.fillStyle = p;
+  ctx.beginPath();
+  ctx.roundRect(970, 247, 150, 40, 10);
+  ctx.fill();
+  ctx.fillStyle = th.bg;
+  ctx.font = "bold 22px Sans-Serif";
+  ctx.textAlign = "center";
+  ctx.fillText(`v${c.version || "?"}`, 1045, 275);
+  ctx.textAlign = "left";
+  [["CRÉATEUR", c.author || "Inconnu"], ["CATÉGORIE", c.category || "Aucune"], ["RÔLE", role], ["DÉLAI", `${c.countDown ?? 1} s`]]
+    .forEach(([t, v], i) => info(ctx, 50 + i * 278, 332, 258, th, t, v));
+  info(ctx, 50, 436, 1100, th, "ALIAS", al);
+  bloc(ctx, y4, h1, "DESCRIPTION", L1, 24, 32, th);
+  bloc(ctx, y5, h2, "UTILISATION", L2, 22, 30, th);
+  pied(ctx, W, H, th, `Tapez '${prefix}help' pour revenir au menu`);
+  return canvas.toBuffer("image/png");
+}
 
 module.exports = {
   config: {
     name: "help",
-    version: "15.0.1-FLORAL-COLOR",
-    author: "Célestin",
-    countDown: 3,
+    version: "5.1.0",
+    author: "YourName",
+    countDown: 5,
     role: 0,
-    shortDescription: "Menu help dynamique et floral par page",
-    longDescription: "Affiche un menu Canvas HD élégant avec des thèmes de couleurs chauds/sakura et des motifs floraux générés automatiquement.",
+    shortDescription: "Menu help Canvas et détail d'une commande",
+    longDescription: "Menu paginé en image, ou détails d'une commande (ex : help art).",
     category: "info",
-    guide: "{pn} [page | commande]"
+    guide: "{pn} [page | basic | commande] (ex: {pn} 2, {pn} art)"
   },
 
-  onStart: async function ({ api, event, args, usersData }) {
-    const { threadID, messageID, senderID } = event;
-    const prefix = global.config?.PREFIX || global.GoatBot?.config?.PREFIX || "!";
-    const commandsMap = global.GoatBot?.commands || new Map();
-    const allCommands = Array.from(commandsMap.keys());
+  onStart: async function ({ api, event, args, usersData, threadsData }) {
+    const { threadID, messageID, senderID: uid } = event;
+    const G = global.GoatBot || {};
+    let prefix = G.config?.prefix || "/";
+    try { prefix = (await threadsData.get(threadID))?.data?.prefix || prefix; } catch {}
+    const cmds = G.commands || new Map();
+    const a0 = (args[0] || "").toLowerCase();
+    const th = theme(a0 === "basic" || (args[1] || "").toLowerCase() === "basic");
 
-    // 1. PALETTES DE COULEURS (Sans Vert ni Bleu Pur)
-    const COLOR_PALETTES = [
-      { // Theme 1 : Sakura Pink / Rose Floral
-        bgTop: "#1A0F1A", bgBottom: "#2A1428", cardBg: "rgba(45, 20, 42, 0.85)", cardBorder: "#6B2D5C",
-        accentStart: "#F472B6", accentEnd: "#FB7185", textMain: "#FFF1F2", textSub: "#D4A5B8",
-        badgeBg: "rgba(244, 114, 182, 0.18)", badgeText: "#F472B6", flowerPetal: "rgba(244, 114, 182, 0.25)", flowerCenter: "#FBBF24"
-      },
-      { // Theme 2 : Sunset Warm / Orange & Magenta
-        bgTop: "#180C0E", bgBottom: "#2B1117", cardBg: "rgba(50, 20, 28, 0.85)", cardBorder: "#682735",
-        accentStart: "#FF512F", accentEnd: "#DD2476", textMain: "#FFF5F5", textSub: "#C98C96",
-        badgeBg: "rgba(255, 81, 47, 0.18)", badgeText: "#FF758C", flowerPetal: "rgba(255, 81, 47, 0.22)", flowerCenter: "#FFD166"
-      },
-      { // Theme 3 : Violet Néon & Orchidée
-        bgTop: "#120B1C", bgBottom: "#211033", cardBg: "rgba(38, 20, 58, 0.85)", cardBorder: "#552A80",
-        accentStart: "#A855F7", accentEnd: "#EC4899", textMain: "#FAF5FF", textSub: "#B28ECB",
-        badgeBg: "rgba(168, 85, 247, 0.18)", badgeText: "#C084FC", flowerPetal: "rgba(168, 85, 247, 0.22)", flowerCenter: "#F472B6"
-      },
-      { // Theme 4 : Rouge Rubis & Pêche
-        bgTop: "#1C0A0E", bgBottom: "#301117", cardBg: "rgba(56, 18, 26, 0.85)", cardBorder: "#782A3A",
-        accentStart: "#E11D48", accentEnd: "#FB923C", textMain: "#FFF1F2", textSub: "#CF8C98",
-        badgeBg: "rgba(225, 29, 72, 0.18)", badgeText: "#FDA4AF", flowerPetal: "rgba(225, 29, 72, 0.22)", flowerCenter: "#FACC15"
-      },
-      { // Theme 5 : Ambre Doré & Corail
-        bgTop: "#1C120C", bgBottom: "#331E12", cardBg: "rgba(58, 32, 18, 0.85)", cardBorder: "#7A4526",
-        accentStart: "#F59E0B", accentEnd: "#F43F5E", textMain: "#FEF3C7", textSub: "#CBB09A",
-        badgeBg: "rgba(245, 158, 11, 0.18)", badgeText: "#FBBF24", flowerPetal: "rgba(245, 158, 11, 0.22)", flowerCenter: "#FB7185"
-      }
-    ];
-
-    function drawRoundedRect(ctx, x, y, width, height, radius) {
-      ctx.beginPath();
-      ctx.roundRect(x, y, width, height, radius);
-      ctx.closePath();
-    }
-
-    function drawFlower(ctx, x, y, size, petalColor, centerColor) {
-      ctx.save();
-      ctx.translate(x, y);
-      const petals = 5;
-      ctx.fillStyle = petalColor;
-
-      for (let i = 0; i < petals; i++) {
-        ctx.beginPath();
-        ctx.rotate((Math.PI * 2) / petals);
-        ctx.ellipse(0, size * 0.6, size * 0.4, size * 0.7, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = centerColor;
-      ctx.beginPath();
-      ctx.arc(0, 0, size * 0.35, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-
-    let userName = "Utilisateur";
-    let avatarUrl = `https://graph.facebook.com/${senderID}/picture?height=500&width=500&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
-
-    try {
-      if (usersData && typeof usersData.getName === 'function') {
-        userName = (await usersData.getName(senderID)) || userName;
-      }
-      if (usersData && typeof usersData.getAvatarUrl === 'function') {
-        const customUrl = await usersData.getAvatarUrl(senderID);
-        if (customUrl) avatarUrl = customUrl;
-      }
-    } catch (e) {}
-
-    // ----------------------------------------------------
-    // 2. MODE DÉTAILS DE COMMANDE
-    // ----------------------------------------------------
-    if (args[0] && isNaN(args[0]) && args[0].toLowerCase() !== "basic") {
-      const commandName = args[0].toLowerCase();
-      const command = commandsMap.get(commandName);
-
-      if (!command) {
-        return api.sendMessage(`⚠️ La commande "${commandName}" n'existe pas.`, threadID, messageID);
-      }
-
-      const colorIndex = commandName.length % COLOR_PALETTES.length;
-      const PALETTE = COLOR_PALETTES[colorIndex];
-      const cmdConfig = command.config || {};
-
-      const canvas = createCanvas(1200, 850);
-      const ctx = canvas.getContext('2d');
-
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      bgGrad.addColorStop(0, PALETTE.bgTop);
-      bgGrad.addColorStop(1, PALETTE.bgBottom);
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      drawFlower(ctx, 1100, 100, 45, PALETTE.flowerPetal, PALETTE.flowerCenter);
-      drawFlower(ctx, 80, 780, 55, PALETTE.flowerPetal, PALETTE.flowerCenter);
-
-      const boxX = 60, boxY = 60, boxW = 1080, boxH = 730;
-      ctx.fillStyle = PALETTE.cardBg;
-      drawRoundedRect(ctx, boxX, boxY, boxW, boxH, 20);
-      ctx.fill();
-      ctx.strokeStyle = PALETTE.cardBorder;
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-
-      ctx.fillStyle = PALETTE.badgeText;
-      ctx.font = "bold 16px 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText("DETAILS DE LA COMMANDE", boxX + 50, boxY + 65);
-
-      ctx.fillStyle = PALETTE.textMain;
-      ctx.font = "bold 38px 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText(`${prefix}${commandName}`, boxX + 50, boxY + 115);
-
-      // CORRECTION DU GUIDE (Sécurité objet multilingue ou string)
-      let rawGuide = cmdConfig.guide;
-      if (typeof rawGuide === 'object' && rawGuide !== null) {
-        rawGuide = rawGuide.fr || rawGuide.en || Object.values(rawGuide)[0] || "{pn}";
-      }
-      if (typeof rawGuide !== 'string') rawGuide = "{pn}";
-
-      const guideFormatted = rawGuide.replace(/\{pn\}|\{p\}\{n\}/g, `${prefix}${commandName}`);
-
-      const labels = [
-        { label: "Module", val: cmdConfig.name || commandName },
-        { label: "Version", val: cmdConfig.version || "1.0.0" },
-        { label: "Auteur", val: cmdConfig.author || "Anonyme" },
-        { label: "Accès", val: cmdConfig.role === 1 ? "Admin Groupe" : cmdConfig.role === 2 ? "Admin Bot" : "Tous les membres" },
-        { label: "Catégorie", val: (cmdConfig.category || "Général").toUpperCase() },
-        { label: "Description", val: cmdConfig.longDescription || cmdConfig.shortDescription || "Aucune description fournie." },
-        { label: "Usage", val: guideFormatted }
-      ];
-
-      let currY = boxY + 180;
-      labels.forEach((item) => {
-        ctx.fillStyle = PALETTE.textSub;
-        ctx.font = "600 15px 'Segoe UI', Roboto, sans-serif";
-        ctx.fillText(item.label.toUpperCase(), boxX + 50, currY);
-
-        ctx.fillStyle = PALETTE.textMain;
-        ctx.font = "18px 'Segoe UI', Roboto, sans-serif";
-        const textVal = item.val.length > 70 ? item.val.substring(0, 70) + "..." : item.val;
-        ctx.fillText(textVal, boxX + 220, currY);
-        currY += 60;
-      });
-
-      const cacheDir = path.join(__dirname, "cache");
-      const cachePath = path.join(cacheDir, `help_${commandName}_${senderID}.png`);
-      fs.ensureDirSync(cacheDir);
-      fs.writeFileSync(cachePath, canvas.toBuffer("image/png"));
-
-      return api.sendMessage(
-        { body: `📌 Détails de la commande **${commandName.toUpperCase()}**`, attachment: fs.createReadStream(cachePath) },
+    const send = async (body, draw) => {
+      let file = null;
+      try {
+        const dir = path.join(__dirname, "cache");
+        fs.ensureDirSync(dir);
+        file = path.join(dir, `help_${uid}.png`);
+        fs.writeFileSync(file, await draw());
+      } catch { file = null; }
+      api.sendMessage(
+        file ? { body, attachment: fs.createReadStream(file) } : body,
         threadID,
-        () => fs.unlinkSync(cachePath),
+        () => { try { file && fs.unlinkSync(file); } catch {} },
         messageID
       );
+    };
+
+    // Détail d'une commande : help art
+    if (a0 && isNaN(a0) && a0 !== "basic") {
+      const cmd = cmds.get(a0) || cmds.get(G.aliases?.get(a0));
+      if (!cmd) return api.sendMessage(`❌ La commande "${a0}" n'existe pas.\n💡 Tapez ${prefix}help pour voir la liste.`, threadID, messageID);
+      const c = cmd.config || {};
+      const desc = txt(c.longDescription) || txt(c.description) || txt(c.shortDescription) || "Aucune description.";
+      let g = c.guide;
+      g = (Array.isArray(g) ? g.join("\n") : txt(g) || "{pn}").replace(/\{pn\}/g, prefix + c.name).replace(/\{p\}/g, prefix);
+      const al = c.aliases?.length ? c.aliases.join(", ") : "Aucun";
+      const role = ROLES[c.role] || "Accès spécial";
+      const body =
+        `╭─── 📘 COMMANDE ───╮\n🔹 Nom : ${prefix}${c.name}\n📝 Description : ${desc}\n👤 Créateur : ${c.author || "Inconnu"}\n` +
+        `🏷️ Version : ${c.version || "?"}\n📂 Catégorie : ${c.category || "Aucune"}\n🔐 Rôle : ${role}\n` +
+        `⏱️ Délai : ${c.countDown ?? 1}s\n🔁 Alias : ${al}\n╰──────────────╯\n\n📖 Utilisation :\n${g}`;
+      return send(body, () => detail({ c, desc, g, al, role, prefix, th, usersData, uid }));
     }
 
-    // ----------------------------------------------------
-    // 3. MODE MENU PRINCIPAL (AVEC COULEUR & FLEURS AUTO)
-    // ----------------------------------------------------
-    let page = 1;
-    if (args[0] && !isNaN(args[0])) page = parseInt(args[0]);
-
-    const cmdsPerPage = 16;
-    const totalPages = Math.ceil(allCommands.length / cmdsPerPage) || 1;
-    if (page < 1 || page > totalPages) page = 1;
-
-    const colorIndex = (page - 1) % COLOR_PALETTES.length;
-    const PALETTE = COLOR_PALETTES[colorIndex];
-
-    const startIdx = (page - 1) * cmdsPerPage;
-    const pageCmds = allCommands.slice(startIdx, startIdx + cmdsPerPage);
-
-    const canvas = createCanvas(1200, 1450);
-    const ctx = canvas.getContext('2d');
-
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    bgGrad.addColorStop(0, PALETTE.bgTop);
-    bgGrad.addColorStop(1, PALETTE.bgBottom);
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    drawFlower(ctx, 1120, 90, 50, PALETTE.flowerPetal, PALETTE.flowerCenter);
-    drawFlower(ctx, 80, 1380, 60, PALETTE.flowerPetal, PALETTE.flowerCenter);
-    drawFlower(ctx, 1140, 1360, 40, PALETTE.flowerPetal, PALETTE.flowerCenter);
-
-    const headX = 60, headY = 60, headW = 1080, headH = 110;
-    ctx.fillStyle = PALETTE.cardBg;
-    drawRoundedRect(ctx, headX, headY, headW, headH, 18);
-    ctx.fill();
-    ctx.strokeStyle = PALETTE.cardBorder;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    const avatarSize = 64;
-    const avatarX = headX + 25;
-    const avatarY = headY + (headH - avatarSize) / 2;
-
-    try {
-      const avatarImg = await loadImage(avatarUrl);
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
-      ctx.closePath();
-      ctx.clip();
-      ctx.drawImage(avatarImg, avatarX, avatarY, avatarSize, avatarSize);
-      ctx.restore();
-
-      const ringGrad = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-      ringGrad.addColorStop(0, PALETTE.accentStart);
-      ringGrad.addColorStop(1, PALETTE.accentEnd);
-      ctx.strokeStyle = ringGrad;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(avatarX + avatarSize / 2, avatarY + avatarSize / 2, avatarSize / 2 + 2, 0, Math.PI * 2);
-      ctx.stroke();
-    } catch (e) {}
-
-    ctx.fillStyle = PALETTE.textMain;
-    ctx.font = "bold 24px 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText(userName, headX + 105, headY + 45);
-
-    ctx.fillStyle = PALETTE.textSub;
-    ctx.font = "14px 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText(`PREFIX: ${prefix}   •   ID: ${senderID}`, headX + 105, headY + 75);
-
-    const progressWidth = 400, progressHeight = 6, progressX = 60, progressY = 195;
-    ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
-    drawRoundedRect(ctx, progressX, progressY, progressWidth, progressHeight, 3);
-    ctx.fill();
-
-    const activeProgressWidth = Math.max((page / totalPages) * progressWidth, 12);
-    const progressGrad = ctx.createLinearGradient(progressX, 0, progressX + progressWidth, 0);
-    progressGrad.addColorStop(0, PALETTE.accentStart);
-    progressGrad.addColorStop(1, PALETTE.accentEnd);
-
-    ctx.fillStyle = progressGrad;
-    drawRoundedRect(ctx, progressX, progressY, activeProgressWidth, progressHeight, 3);
-    ctx.fill();
-
-    ctx.fillStyle = PALETTE.textSub;
-    ctx.font = "600 14px 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText(`PAGE ${page} / ${totalPages}  (${allCommands.length} COMMANDES)`, progressX + progressWidth + 20, progressY + 6);
-
-    const cardWidth = 525, cardHeight = 85, gapX = 30, gapY = 16, startX = 60, startY = 225;
-
-    pageCmds.forEach((cmdName, i) => {
-      const col = i % 2;
-      const row = Math.floor(i / 2);
-      const x = startX + col * (cardWidth + gapX);
-      const y = startY + row * (cardHeight + gapY);
-
-      const cmdObj = commandsMap.get(cmdName);
-      const category = (cmdObj?.config?.category || "Général").toUpperCase();
-
-      ctx.fillStyle = PALETTE.cardBg;
-      drawRoundedRect(ctx, x, y, cardWidth, cardHeight, 14);
-      ctx.fill();
-
-      ctx.strokeStyle = PALETTE.cardBorder;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-
-      ctx.fillStyle = PALETTE.textMain;
-      ctx.font = "bold 20px 'Segoe UI', Roboto, sans-serif";
-      ctx.fillText(`${prefix}${cmdName}`, x + 25, y + 48);
-
-      ctx.font = "bold 11px 'Segoe UI', Roboto, sans-serif";
-      const categoryText = category.length > 14 ? category.substring(0, 11) + "..." : category;
-      const textMetrics = ctx.measureText(categoryText);
-      const badgeWidth = textMetrics.width + 24;
-      const badgeHeight = 26;
-      const badgeX = x + cardWidth - badgeWidth - 20;
-      const badgeY = y + (cardHeight - badgeHeight) / 2;
-
-      ctx.fillStyle = PALETTE.badgeBg;
-      drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 6);
-      ctx.fill();
-
-      ctx.fillStyle = PALETTE.badgeText;
-      ctx.fillText(categoryText, badgeX + 12, badgeY + 17);
-    });
-
-    const nextPg = page + 1 > totalPages ? 1 : page + 1;
-    ctx.fillStyle = PALETTE.textSub;
-    ctx.font = "14px 'Segoe UI', Roboto, sans-serif";
-    ctx.fillText(`💡 Tape ${prefix}help ${nextPg} pour la page suivante (avec un nouveau thème floral !)`, 160, 1400);
-
-    const cacheDir = path.join(__dirname, "cache");
-    const cachePath = path.join(cacheDir, `help_page_${page}_${senderID}.png`);
-    fs.ensureDirSync(cacheDir);
-    fs.writeFileSync(cachePath, canvas.toBuffer("image/png"));
-
-    api.sendMessage(
-      {
-        body: `📜 **MENU DES COMMANDES** (Page ${page}/${totalPages})`,
-        attachment: fs.createReadStream(cachePath)
-      },
-      threadID,
-      () => fs.unlinkSync(cachePath),
-      messageID
-    );
+    // Menu paginé
+    const names = [...cmds.keys()], per = 20, total = Math.ceil(names.length / per) || 1;
+    let page = parseInt(a0) || 1;
+    if (page < 1 || page > total) page = 1;
+    const list = names.slice((page - 1) * per, page * per), next = page + 1 > total ? 1 : page + 1;
+    const body =
+      `📖 MENU SANS FORFAIT (Page ${page}/${total})\n\n` +
+      list.map((n, i) => `• ${prefix}${n} ` + ((i + 1) % 3 === 0 ? "\n" : "")).join("") +
+      `\n\n📌 Tapez '${prefix}help ${next}' pour la page suivante.\n🔎 Tapez '${prefix}help art' pour les détails d'une commande.`;
+    return send(body, () => menu({ list, all: names.length, page, total, prefix, th, usersData, uid }));
   }
 };
