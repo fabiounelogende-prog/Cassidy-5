@@ -3,287 +3,301 @@ const fs = require("fs-extra");
 const path = require("path");
 const os = require("os");
 
+function teinte(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = v => Math.max(0, Math.min(255, Math.round(v * k)));
+  return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
+}
+
+function formatDuree(ms) {
+  const sec = Math.floor(ms / 1000) % 60;
+  const min = Math.floor(ms / 60000) % 60;
+  const h = Math.floor(ms / 3600000) % 24;
+  const j = Math.floor(ms / 86400000);
+  const parts = [];
+  if (j) parts.push(`${j}j`);
+  if (h || j) parts.push(`${h}h`);
+  if (min || h || j) parts.push(`${min}m`);
+  parts.push(`${sec}s`);
+  return parts.join(" ");
+}
+
+function formatOctets(o) {
+  return (o / 1024 / 1024).toFixed(1) + " Mo";
+}
+
+// ---------- Petites icônes de stats (traits simples) ----------
+function iconeHorloge(ctx, cx, cy, s, c) {
+  ctx.strokeStyle = c; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.arc(cx, cy, s, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy - s * 0.6); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + s * 0.4, cy + s * 0.2); ctx.stroke();
+}
+function iconeSignal(ctx, cx, cy, s, c) {
+  ctx.strokeStyle = c; ctx.lineWidth = 2.2; ctx.lineCap = "round";
+  [0.4, 0.65, 0.9].forEach((f, i) => {
+    ctx.beginPath();
+    ctx.moveTo(cx - s + i * s * 0.6, cy + s);
+    ctx.lineTo(cx - s + i * s * 0.6, cy + s - s * 2 * f);
+    ctx.stroke();
+  });
+}
+function iconePuce(ctx, cx, cy, s, c) {
+  ctx.strokeStyle = c; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.roundRect(cx - s * 0.6, cy - s * 0.6, s * 1.2, s * 1.2, 3); ctx.stroke();
+  for (let i = -1; i <= 1; i += 2) {
+    ctx.beginPath(); ctx.moveTo(cx + i * s * 0.6, cy - s * 0.3); ctx.lineTo(cx + i * s * 0.9, cy - s * 0.3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + i * s * 0.6, cy + s * 0.3); ctx.lineTo(cx + i * s * 0.9, cy + s * 0.3); ctx.stroke();
+  }
+}
+function iconeJauge(ctx, cx, cy, s, c) {
+  ctx.strokeStyle = c; ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.arc(cx, cy + s * 0.2, s, Math.PI, 0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx, cy + s * 0.2); ctx.lineTo(cx + s * 0.5, cy - s * 0.4); ctx.stroke();
+}
+function iconeLoupe(ctx, cx, cy, s, c) {
+  ctx.strokeStyle = c; ctx.lineWidth = 2.4; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(cx - s * 0.15, cy - s * 0.15, s * 0.65, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + s * 0.3, cy + s * 0.3); ctx.lineTo(cx + s * 0.75, cy + s * 0.75); ctx.stroke();
+}
+function pastilleStatut(ctx, cx, cy, r, couleur) {
+  ctx.save();
+  ctx.shadowColor = couleur; ctx.shadowBlur = 10;
+  const g = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+  g.addColorStop(0, "#ffffff");
+  g.addColorStop(0.35, couleur);
+  g.addColorStop(1, teinte(couleur, 0.7));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+function coinOrnement(ctx, x, y, taille, couleur, miroirX, miroirY) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(miroirX ? -1 : 1, miroirY ? -1 : 1);
+  ctx.strokeStyle = couleur; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(0, taille); ctx.lineTo(0, 0); ctx.lineTo(taille, 0); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, taille * 0.5); ctx.lineTo(taille * 0.22, taille * 0.22); ctx.lineTo(taille * 0.5, 0);
+  ctx.stroke();
+  ctx.restore();
+}
+function particules(ctx, zone, couleur, n) {
+  const alea = (() => { let g = 7; return () => (g = (g * 9301 + 49297) % 233280) / 233280; })();
+  ctx.fillStyle = couleur;
+  for (let i = 0; i < n; i++) {
+    ctx.globalAlpha = 0.15 + alea() * 0.2;
+    ctx.beginPath();
+    ctx.arc(zone.x1 + alea() * (zone.x2 - zone.x1), zone.y1 + alea() * (zone.y2 - zone.y1), 1.4 + alea() * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
 module.exports = {
   config: {
     name: "uptime",
-    version: "16.0.0",
-    author: "Célestin",
+    aliases: ["up", "status"],
+    version: "2.0",
+    author: "toi",
     countDown: 5,
     role: 0,
-    shortDescription: "Uptime design fidèle avec couleurs dynamiques",
-    longDescription: "Reproduction exacte du layout original (Avatar central haut, wave, 4 blocs, petite barre) avec palettes de couleurs changeantes.",
-    category: "system",
-    guide: "{pn}"
+    shortDescription: { fr: "Statut visuel du bot (canvas)" },
+    longDescription: { fr: "Affiche une carte visuelle avec le temps de fonctionnement et un diagnostic du bot" },
+    category: "info",
+    guide: { fr: "{pn} : affiche le statut du bot" }
   },
 
   onStart: async function ({ api, event, usersData }) {
     const { threadID, messageID, senderID } = event;
+    const debut = Date.now();
+
+    // --- Vérifications réelles ---
+    const resultats = [];
+    const verifier = (nom, fn) => {
+      try { resultats.push([nom, fn() !== false]); }
+      catch { resultats.push([nom, false]); }
+    };
+    verifier("Commandes chargées", () => (global.GoatBot && global.GoatBot.commands && global.GoatBot.commands.size) > 0);
+    verifier("Configuration du bot", () => !!(global.GoatBot && global.GoatBot.config));
+    verifier("Envoi de messages", () => typeof api.sendMessage === "function");
+    verifier("Lecture du profil", () => typeof api.getUserInfo === "function");
+    const toutOk = resultats.every(([, ok]) => ok);
+
+    const ping = Date.now() - debut;
+    const dureeBot = formatDuree(process.uptime() * 1000);
+    const memoire = formatOctets(process.memoryUsage().heapUsed);
+    const charge = os.loadavg()[0].toFixed(2);
+
+    // --- Thème ---
+    const PALETTES = [
+      { a: "#00e5ff", b: "#2962ff" },
+      { a: "#39ff88", b: "#00c2a8" },
+      { a: "#ff2e93", b: "#7c4dff" },
+      { a: "#ffcc33", b: "#ff6a3d" }
+    ];
+    const t = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+    const accent1 = toutOk ? t.a : "#ff5252";
+    const accent2 = toutOk ? t.b : "#b71c1c";
+
+    // --- Canvas ---
+    const W = 900, H = 640;
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext("2d");
+
+    const fond = ctx.createLinearGradient(0, 0, W, H);
+    fond.addColorStop(0, "#0a0e1a");
+    fond.addColorStop(1, "#140a2e");
+    ctx.fillStyle = fond;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx < W; gx += 36) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke(); }
+    for (let gy = 0; gy < H; gy += 36) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke(); }
+
+    ctx.globalAlpha = 0.3;
+    const g1 = ctx.createRadialGradient(W, 0, 10, W, 0, 400);
+    g1.addColorStop(0, accent1); g1.addColorStop(1, "transparent");
+    ctx.fillStyle = g1;
+    ctx.beginPath(); ctx.arc(W, 0, 400, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Cadre
+    ctx.strokeStyle = accent1;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(16, 16, W - 32, H - 32, 16); ctx.stroke();
+    ctx.strokeStyle = accent2;
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(24, 24, W - 48, H - 48, 12); ctx.stroke();
+
+    [[16, 16, false, false], [W - 16, 16, true, false], [16, H - 16, false, true], [W - 16, H - 16, true, true]]
+      .forEach(([cx, cy, mx, my]) => coinOrnement(ctx, cx, cy, 24, accent1, mx, my));
+
+    // Particules décoratives dispersées
+    particules(ctx, { x1: 40, y1: 260, x2: W - 40, y2: H - 70 }, accent1, 28);
+
+    // Avatar de l'utilisateur, en haut à droite, dans un cadre hexagonal
+    function hexagone(c, x, y, r) {
+      c.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 6;
+        const px = x + r * Math.cos(a), py = y + r * Math.sin(a);
+        i === 0 ? c.moveTo(px, py) : c.lineTo(px, py);
+      }
+      c.closePath();
+    }
+    try {
+      const avatarUrl = usersData && (await usersData.getAvatarUrl(senderID));
+      if (avatarUrl) {
+        const avatar = await loadImage(avatarUrl);
+        const ax = W - 75, ay = 75, ar = 42;
+        ctx.save();
+        hexagone(ctx, ax, ay, ar);
+        ctx.clip();
+        ctx.drawImage(avatar, ax - ar, ay - ar, ar * 2, ar * 2);
+        ctx.restore();
+        const anneau = ctx.createLinearGradient(ax - ar, ay - ar, ax + ar, ay + ar);
+        anneau.addColorStop(0, accent1);
+        anneau.addColorStop(1, accent2);
+        ctx.strokeStyle = anneau; ctx.lineWidth = 3.5;
+        hexagone(ctx, ax, ay, ar + 2);
+        ctx.stroke();
+      }
+    } catch (e) {
+      // Masqué si la photo ne charge pas
+    }
+
+    // En-tête
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 32px Sans-Serif";
+    ctx.shadowColor = accent1; ctx.shadowBlur = 16;
+    ctx.fillText("STATUT DU BOT", 45, 72);
+    ctx.shadowBlur = 0;
+
+    const largeurBadge = toutOk ? 150 : 190;
+    const badge = ctx.createLinearGradient(45, 0, 45 + largeurBadge, 0);
+    badge.addColorStop(0, accent1); badge.addColorStop(1, accent2);
+    ctx.fillStyle = badge;
+    ctx.beginPath(); ctx.roundRect(45, 86, largeurBadge, 28, 8); ctx.fill();
+    pastilleStatut(ctx, 61, 100, 6, toutOk ? "#ffffff" : "#1a0000");
+    ctx.fillStyle = "#0a0e1a";
+    ctx.font = "bold 13px Sans-Serif";
+    ctx.fillText(toutOk ? "EN LIGNE" : "PROBLÈME DÉTECTÉ", 74, 105);
+
+    // Cartes de statistiques
+    const stats = [
+      { icone: iconeHorloge, label: "Uptime", valeur: dureeBot },
+      { icone: iconeSignal, label: "Ping", valeur: `${ping} ms` },
+      { icone: iconePuce, label: "Mémoire", valeur: memoire },
+      { icone: iconeJauge, label: "Charge", valeur: charge }
+    ];
+    let sx = 45, sy = 140;
+    const cardW = (W - 90 - 3 * 16) / 4;
+    stats.forEach(({ icone, label, valeur }) => {
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      ctx.beginPath(); ctx.roundRect(sx, sy, cardW, 96, 12); ctx.fill();
+      ctx.strokeStyle = accent1; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(sx, sy, cardW, 96, 12); ctx.stroke();
+      icone(ctx, sx + cardW / 2, sy + 32, 13, accent1);
+      ctx.fillStyle = "#a8b3cf"; ctx.font = "12px Sans-Serif"; ctx.textAlign = "center";
+      ctx.fillText(label, sx + cardW / 2, sy + 60);
+      ctx.fillStyle = "#ffffff"; ctx.font = "bold 16px Sans-Serif";
+      ctx.fillText(valeur, sx + cardW / 2, sy + 82);
+      ctx.textAlign = "left";
+      sx += cardW + 16;
+    });
+
+    // Ligne de séparation
+    ctx.strokeStyle = accent1; ctx.globalAlpha = 0.5; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(45, 258); ctx.lineTo(W - 45, 258); ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Vérifications (croix / coches)
+    ctx.fillStyle = "#ffffff"; ctx.font = "bold 18px Sans-Serif";
+    iconeLoupe(ctx, 53, 285, 9, accent1);
+    ctx.fillText("Vérifications", 72, 290);
+
+    let vy = 315;
+    resultats.forEach(([nom, ok]) => {
+      ctx.fillStyle = "rgba(255,255,255,0.04)";
+      ctx.beginPath(); ctx.roundRect(45, vy, W - 90, 46, 10); ctx.fill();
+      ctx.strokeStyle = ok ? "#2ecc71" : "#ff5252"; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.roundRect(45, vy, W - 90, 46, 10); ctx.stroke();
+
+      // Pastille coche / croix dessinée
+      const cx = 72, cy = vy + 23;
+      ctx.strokeStyle = ok ? "#2ecc71" : "#ff5252"; ctx.lineWidth = 3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.arc(cx, cy, 13, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      if (ok) {
+        ctx.moveTo(cx - 6, cy); ctx.lineTo(cx - 1, cy + 5); ctx.lineTo(cx + 7, cy - 6);
+      } else {
+        ctx.moveTo(cx - 5, cy - 5); ctx.lineTo(cx + 5, cy + 5);
+        ctx.moveTo(cx + 5, cy - 5); ctx.lineTo(cx - 5, cy + 5);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff"; ctx.font = "15px Sans-Serif";
+      ctx.fillText(nom, 100, vy + 29);
+      vy += 54;
+    });
+
+    // Pied de page
+    ctx.fillStyle = "#6b7aa0"; ctx.font = "13px Sans-Serif";
+    ctx.fillText(`Généré le ${new Date().toLocaleString("fr-FR")}`, 45, H - 32);
+
+    // --- Envoi ---
     const cacheDir = path.join(__dirname, "cache");
     const cachePath = path.join(cacheDir, `uptime_${senderID}.png`);
+    fs.ensureDirSync(cacheDir);
+    fs.writeFileSync(cachePath, canvas.toBuffer("image/png"));
 
-    try {
-      if (!fs.existsSync(cacheDir)) {
-        fs.mkdirSync(cacheDir, { recursive: true });
-      }
-
-      // 1. PALETTES DE COULEURS DYNAMIQUES
-      const THEMES = [
-        {
-          name: "BLUE NIGHT (Bleu & Noir)",
-          main: "#00d2ff",
-          secondary: "#0066ff",
-          accent: "#00f2fe",
-          greenAccent: "#00ff88",
-          bg1: "#030814",
-          bg2: "#081326",
-          cardBg: "rgba(6, 16, 35, 0.75)"
-        },
-        {
-          name: "CYBER NEON",
-          main: "#00f7ff",
-          secondary: "#ff007f",
-          accent: "#9d00ff",
-          greenAccent: "#00ffaa",
-          bg1: "#060312",
-          bg2: "#120826",
-          cardBg: "rgba(18, 8, 38, 0.75)"
-        },
-        {
-          name: "SUNSET SYNTHWAVE",
-          main: "#ff5e00",
-          secondary: "#ff0055",
-          accent: "#ffb700",
-          greenAccent: "#00ffff",
-          bg1: "#140212",
-          bg2: "#260624",
-          cardBg: "rgba(38, 6, 36, 0.75)"
-        },
-        {
-          name: "MATRIX GREEN",
-          main: "#00ff66",
-          secondary: "#00b33c",
-          accent: "#76ff03",
-          greenAccent: "#00ffff",
-          bg1: "#010d04",
-          bg2: "#031c0a",
-          cardBg: "rgba(2, 20, 7, 0.75)"
-        }
-      ];
-
-      const palette = THEMES[Math.floor(Math.random() * THEMES.length)];
-
-      // 2. DONNÉES SYSTÈME ET AVATAR
-      const uptimeTime = process.uptime();
-      const days = Math.floor(uptimeTime / (3600 * 24));
-      const hours = Math.floor((uptimeTime % (3600 * 24)) / 3600);
-      const minutes = Math.floor((uptimeTime % 3600) / 60);
-      const seconds = Math.floor(uptimeTime % 60);
-      const timeString = `${days}d  ${hours}h  ${minutes}m  ${seconds}s`;
-
-      const startTime = Date.now();
-      let avatar;
-      try {
-        const avatarUrl = await usersData.getAvatarUrl(senderID);
-        avatar = await loadImage(avatarUrl);
-      } catch (e) {
-        avatar = await loadImage("https://i.imgur.com/58P9S3p.png");
-      }
-      const speedMs = Date.now() - startTime;
-      const ramUsed = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(1);
-      const ramTotal = (os.totalmem() / 1024 / 1024 / 1024).toFixed(1);
-
-      // 3. CANVAS (1000 x 600 - Proportions exactes du modèle)
-      const width = 1000;
-      const height = 600;
-      const canvas = createCanvas(width, height);
-      const ctx = canvas.getContext("2d");
-
-      // ARRIÈRE-PLAN
-      const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-      bgGrad.addColorStop(0, palette.bg1);
-      bgGrad.addColorStop(1, palette.bg2);
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, width, height);
-
-      // Grille Subtile en Fond
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.03)";
-      ctx.lineWidth = 1;
-      for (let x = 0; x < width; x += 30) {
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-      }
-      for (let y = 0; y < height; y += 30) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-      }
-
-      // CADRE EXTÉRIEUR DU DASHBOARD
-      ctx.strokeStyle = palette.main;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.roundRect(15, 15, width - 30, height - 30, 16);
-      ctx.stroke();
-
-      // --- 1. AVATAR EN HAUT AU CENTRE ---
-      const avatarSize = 110;
-      const avatarX = width / 2;
-      const avatarY = 90;
-
-      // Cercle d'effet Tech / Néon autour de l'avatar
-      ctx.strokeStyle = palette.main;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(avatarX, avatarY, avatarSize / 2 + 8, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Traits discontinus autour
-      ctx.strokeStyle = palette.accent;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([8, 8]);
-      ctx.beginPath();
-      ctx.arc(avatarX, avatarY, avatarSize / 2 + 14, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]); // réinitialisation
-
-      // Image Avatar Rondo
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(avatarX, avatarY, avatarSize / 2, 0, Math.PI * 2);
-      ctx.clip();
-      ctx.drawImage(avatar, avatarX - avatarSize / 2, avatarY - avatarSize / 2, avatarSize, avatarSize);
-      ctx.restore();
-
-      // TITRE PRINCIPAL
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#FFFFFF";
-      ctx.font = "bold 28px sans-serif";
-      ctx.fillText("SYSTEM MONITORING CENTER", width / 2, 175);
-
-      ctx.fillStyle = palette.main;
-      ctx.font = "12px sans-serif";
-      ctx.fillText("DÉTECTION EN TEMPS RÉEL • STATUT GLOBAL", width / 2, 198);
-
-      // --- 2. GRAND BLOC UPTIME ---
-      const upX = 40, upY = 225, upW = 920, upH = 95;
-      ctx.fillStyle = palette.cardBg;
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.roundRect(upX, upY, upW, upH, 12);
-      ctx.fill();
-      ctx.stroke();
-
-      // Ligne verticale lumineuse à gauche
-      ctx.fillStyle = palette.main;
-      ctx.beginPath();
-      ctx.roundRect(upX + 4, upY + 12, 4, upH - 24, 2);
-      ctx.fill();
-
-      // Intitulé Uptime
-      ctx.textAlign = "left";
-      ctx.fillStyle = palette.main;
-      ctx.font = "bold 12px sans-serif";
-      ctx.fillText("DURÉE D'ACTIVITÉ (UPTIME)", upX + 22, upY + 30);
-
-      // Valeur Uptime
-      ctx.fillStyle = palette.main;
-      ctx.font = "bold 32px sans-serif";
-      ctx.fillText(timeString, upX + 22, upY + 72);
-
-      // Onde Bleue Sinusoïdale (à droite dans le bloc)
-      ctx.strokeStyle = palette.main;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      for (let x = upX + 580; x < upX + upW - 30; x += 3) {
-        const y = upY + 50 + Math.sin((x - upX) * 0.025) * 18;
-        if (x === upX + 580) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
-
-      // --- 3. LES 4 PETITS BLOCS MÉTROLOGIQUES ---
-      const cards = [
-        { title: "⚡ LATENCE / PING", val: `${speedMs} ms`, border: "rgba(255, 255, 255, 0.15)", textCol: "#FFFFFF" },
-        { title: "MÉMOIRE RAM", val: `${ramUsed} MB / ${ramTotal} GB`, border: "rgba(255, 255, 255, 0.15)", textCol: "#FFFFFF" },
-        { title: "CHARGE CPU", val: "18.7 %", border: "rgba(255, 255, 255, 0.15)", textCol: "#FFFFFF" },
-        { title: "ÉTAT DU SYSTÈME", val: "● OPERATIONAL (LINUX)", border: palette.greenAccent, textCol: palette.greenAccent }
-      ];
-
-      const cardW = 215;
-      const cardH = 90;
-      const cardY = 335;
-
-      cards.forEach((item, index) => {
-        const cx = 40 + index * 235;
-
-        ctx.fillStyle = palette.cardBg;
-        ctx.strokeStyle = item.border;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.roundRect(cx, cardY, cardW, cardH, 12);
-        ctx.fill();
-        ctx.stroke();
-
-        // Titre
-        ctx.fillStyle = palette.main;
-        ctx.font = "10px sans-serif";
-        ctx.fillText(item.title, cx + 16, cardY + 26);
-
-        // Valeur
-        ctx.fillStyle = item.textCol;
-        ctx.font = "bold 15px sans-serif";
-        ctx.fillText(item.val, cx + 16, cardY + 62);
-      });
-
-      // --- 4. PETITE BARRE DE PROGRESSION FINE ---
-      const barY = 470;
-      ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-      ctx.font = "10px sans-serif";
-      ctx.fillText("Fréquence de réponse système et bande passante", 40, barY - 8);
-
-      // Fond de la petite barre
-      ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
-      ctx.beginPath();
-      ctx.roundRect(40, barY, 920, 8, 4);
-      ctx.fill();
-
-      // Progression bleue
-      const miniBarGrad = ctx.createLinearGradient(40, 0, 40 + 320, 0);
-      miniBarGrad.addColorStop(0, palette.main);
-      miniBarGrad.addColorStop(1, palette.secondary);
-      ctx.fillStyle = miniBarGrad;
-      ctx.beginPath();
-      ctx.roundRect(40, barY, 320, 8, 4);
-      ctx.fill();
-
-      // --- 5. SPECTRE D'ÉGALISEUR EN BAS ---
-      const eqY = 530;
-      const totalBars = 48;
-      for (let i = 0; i < totalBars; i++) {
-        const bh = Math.floor(Math.random() * 26) + 6;
-        const bx = 40 + i * 19.5;
-        ctx.fillStyle = palette.main;
-        ctx.beginPath();
-        ctx.roundRect(bx, eqY + (30 - bh) / 2, 8, bh, 3);
-        ctx.fill();
-      }
-
-      // ENVOI
-      const buffer = canvas.toBuffer("image/png");
-      fs.writeFileSync(cachePath, buffer);
-
-      return api.sendMessage(
-        {
-          body: `🎨 **SYSTEM UPTIME [${palette.name}]**`,
-          attachment: fs.createReadStream(cachePath)
-        },
-        threadID,
-        () => fs.unlinkSync(cachePath),
-        messageID
-      );
-
-    } catch (error) {
-      console.error(error);
-      if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
-      return api.sendMessage("Erreur lors de la génération du panneau Uptime.", threadID, messageID);
-    }
+    api.sendMessage(
+      { attachment: fs.createReadStream(cachePath) },
+      threadID,
+      () => fs.unlinkSync(cachePath),
+      messageID
+    );
   }
 };
