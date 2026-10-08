@@ -6,10 +6,32 @@ const { createCanvas, loadImage } = require("canvas");
 const googleTTS = require("google-tts-api");
 
 // 🌐 API ENDPOINTS
-const VISION_API = "https://vision-api-opyw.onrender.com";
-const MISTRAL_API = "https://christus-api.vercel.app/ai/MistralAI";
-const DALLE_API = "https://dall-e-tau-steel.vercel.app/kshitiz";
+const POLLI_TEXT = "https://text.pollinations.ai/openai";
+const POLLI_IMAGE = "https://image.pollinations.ai/prompt";
 const PINTEREST_API = "https://zetbot-page.onrender.com/api/pinterest";
+
+// 🔑 Token Pollinations (optionnel, gratuit sur auth.pollinations.ai → limite 5 s au lieu de 15 s)
+const POLLI_TOKEN = process.env.POLLI_TOKEN || "";
+function polliHeaders() {
+  return POLLI_TOKEN ? { Authorization: `Bearer ${POLLI_TOKEN}` } : {};
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// 🔁 Réessaie si Pollinations répond 429 (limite de requêtes)
+async function withRetry(fn, tries = 3) {
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e.response?.status === 429 && i < tries - 1) {
+        await sleep(16000);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
 
 // 📦 MEMORY
 const DB_FILE = path.join(__dirname, "neo_memory.json");
@@ -107,7 +129,7 @@ function stylize(text) {
   const lowerMap = {
     'a':'𝖺','b':'𝖻','c':'𝖼','d':'𝖽','e':'𝖾','f':'𝖿','g':'𝗀','h':'𝗁','i':'𝗂','j':'𝗃',
     'k':'𝗄','l':'𝗅','m':'𝗆','n':'𝗇','o':'𝗈','p':'𝗉','q':'𝗊','r':'𝗋','s':'𝗌','t':'𝗍',
-    'u':'𝗎','v':'𝗏','w':'𝗐','x':'𝗑','y':' boot','z':' z'
+    'u':'𝗎','v':'𝗏','w':'𝗐','x':'𝗑','y':'𝗒','z':'𝗓'
   };
 
   return String(text).split('').map(char => {
@@ -122,19 +144,37 @@ function frame(text) {
   return `${line}\n${text}\n${line}`;
 }
 
-// 👁️ API VISION
+// 👁️ API VISION (Pollinations)
 async function analyzeImage(imageUrl, question, message) {
   try {
     const q = question || "Décris cette image clairement, en français.";
     await message.reply(frame(stylize("👁️ Analyse de l'image en cours...")));
 
-    const { data } = await axios.post(`${VISION_API}/describe`, {
-      imageUrl,
-      question: q
-    }, { timeout: 120000 });
+    // On télécharge l'image puis on l'envoie en base64 (plus fiable que l'URL Messenger)
+    const img = await axios.get(imageUrl, {
+      responseType: "arraybuffer",
+      headers: { "User-Agent": "Mozilla/5.0" },
+      timeout: 30000
+    });
+    const mime = String(img.headers["content-type"] || "image/jpeg").split(";")[0];
+    const b64 = Buffer.from(img.data).toString("base64");
 
-    const text = data.description || data.text || data.error;
-    if (!data.success && !text) {
+    const { data } = await withRetry(() =>
+      axios.post(POLLI_TEXT, {
+        model: "openai",
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: q },
+            { type: "image_url", image_url: { url: `data:${mime};base64,${b64}` } }
+          ]
+        }],
+        max_tokens: 700
+      }, { timeout: 90000, headers: polliHeaders() })
+    );
+
+    const text = data?.choices?.[0]?.message?.content;
+    if (!text) {
       return message.reply(frame(stylize("❌ Impossible d'analyser cette image.")));
     }
 
@@ -149,16 +189,23 @@ async function analyzeImage(imageUrl, question, message) {
   }
 }
 
-// 🎨 API IMAGINE (DALL-E)
+// 🎨 API IMAGINE (Pollinations)
 async function generateImage(prompt) {
-  const response = await axios.get(`${DALLE_API}?prompt=${encodeURIComponent(prompt)}`);
-  const imageUrl = response.data.response;
+  const url = `${POLLI_IMAGE}/${encodeURIComponent(prompt)}?model=flux&width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1e6)}`;
+  const res = await withRetry(() =>
+    axios.get(url, {
+      responseType: "arraybuffer",
+      timeout: 120000,
+      headers: polliHeaders()
+    })
+  );
 
-  if (!imageUrl) throw new Error("L'API n'a renvoyé aucun lien d'image.");
+  if (!String(res.headers["content-type"] || "").startsWith("image")) {
+    throw new Error("L'API n'a pas renvoyé d'image.");
+  }
 
-  const imgResponse = await axios.get(imageUrl, { responseType: "arraybuffer" });
-  const imgPath = path.join(os.tmpdir(), `genx_dalle_${Date.now()}.jpg`);
-  await fs.outputFile(imgPath, imgResponse.data);
+  const imgPath = path.join(os.tmpdir(), `neo_img_${Date.now()}.jpg`);
+  await fs.outputFile(imgPath, res.data);
   return imgPath;
 }
 
@@ -385,94 +432,93 @@ async function handlePinterestSearch(query, message, event, api) {
   }
 }
 
-// 🤖 API MISTRAL AI
+// 🤖 IA : SECOURS SI L'API NE RÉPOND PAS
+function remFallback(q) {
+  const low = String(q || "").toLowerCase();
+  if (/salut|slt|\bcc\b|\byo\b|hello|bonjour/.test(low))
+    return "Yo ça va ? 😎 Moi c'est NEO, pose-moi ce que tu veux.";
+  if (low.includes("comment"))
+    return "Dis-moi exactement ce que tu veux et je te donne la méthode 😉";
+  if (low.includes("c'est quoi") || low.includes("explique"))
+    return "Je t'explique ça, reformule-moi la question avec un peu plus de détails 👇";
+  return "J'ai bien reçu ta question 😎 Reformule un peu pour que je te réponde mieux.";
+}
+
+// 🤖 IA : IDENTITÉ DE NEO
+function buildSystem(mem) {
+  return `Tu es NEO, une IA de Messenger créée par Célestin Olua 🇨🇩 (ton boss, le vrai goat).
+Tu n'es PAS ChatGPT, ni OpenAI, ni Mistral, ni Copilot, ni Bing, ni un "modèle de langage". Ne dis jamais "en tant qu'IA".
+Si on demande qui tu es : "Moi c'est NEO, créé par Célestin Olua 😎". Si on demande qui t'a créé : Célestin Olua.
+
+Style : pote décontracté, direct, avec des emojis. Réponses courtes (3-6 lignes) sauf demande de détails.
+Réponds dans la langue de l'utilisateur (français par défaut). Aucun lien web.
+
+Déclencheurs, uniquement si la demande l'exige (écris-le seul sur sa ligne) :
+VISION_TRIGGER: [question sur l'image]
+IMAGINE_TRIGGER: [prompt anglais ultra-détaillé]
+PIN_TRIGGER: [mot-clé]
+MAP_TRIGGER: [nom du lieu]
+AUDIO_TRIGGER: [texte court]
+
+Nom de l'utilisateur : ${mem.name || "Inconnu"}
+Heure : ${getTime()}`;
+}
+
+// 🤖 IA : APPEL POLLINATIONS (TEXTE)
 async function askAI(prompt, mem, uid) {
-  const formattedHistory = mem.history
-    .slice(-15) 
-    .map(h => `${h.sender === "user" ? "Utilisateur" : "NEO"}: ${h.text}`)
-    .join("\n");
+  // l'historique contient déjà le message actuel en dernier : on l'exclut
+  const history = mem.history.slice(-9, -1).map(h => ({
+    role: h.sender === "user" ? "user" : "assistant",
+    content: String(h.text).slice(0, 800)
+  }));
 
-  const fullPrompt = `
-Tu es NEO IA, un assistant virtuel polyvalent, intelligent et très dynamique.
-Tu es créé par Célestin Olua 🇨🇩. C'est ton créateur unique et absolu.
-
-Règles de comportement:
-Réponds normalement et spontanément.
-Si un utilisateur te demande qui t'a créé, tu réponds que c'est Célestin Olua 😏.
-Ne mets aucun lien web dans tes réponses textuelles.
-Utilise des emojis pour exprimer tes sentiments.
-
-Déclencheurs d'APIs externes à utiliser impérativement :
-1. Analyse/Vision d'image : "VISION_TRIGGER: [question]"
-2. Génération d'image : "IMAGINE_TRIGGER: [prompt en anglais ultra-détaillé]"
-3. Recherche Pinterest : "PIN_TRIGGER: [mot-clé]"
-4. Recherche de carte/localisation : "MAP_TRIGGER: [nom du lieu]"
-5. Synthèse vocale : "AUDIO_TRIGGER: [texte court à prononcer]"
-
-Profil Utilisateur:
-Nom: ${mem.name || "Inconnu"}
-Heure actuelle: ${getTime()}
-Humeur: ${mem.mood}
-
-Historique:
-${formattedHistory}
-
-Message actuel:
-${prompt}
-`;
+  const payload = {
+    model: "openai",
+    messages: [
+      { role: "system", content: buildSystem(mem) },
+      ...history,
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.8,
+    max_tokens: 600
+  };
 
   try {
-    const res = await axios.get(MISTRAL_API, {
-      params: { prompt: fullPrompt },
-      timeout: 15000
-    });
-
-    let reply = "";
-    if (res.data) {
-      if (typeof res.data === "string") {
-        reply = res.data;
-      } else {
-        reply = res.data.message || 
-                res.data.reply || 
-                res.data.result || 
-                res.data.answer || 
-                res.data.response ||
-                JSON.stringify(res.data);
-      }
-    }
-
-    if (!reply || reply === "{}" || reply.includes("[object Object]")) {
-      reply = "Je suis à tes côtés, dis-moi tout ! 😊";
-    }
-
-    return String(reply);
-  } catch {
-    return "Je suis bien en ligne et à ton écoute ! 😊";
+    const res = await withRetry(() =>
+      axios.post(POLLI_TEXT, payload, { timeout: 30000, headers: polliHeaders() })
+    );
+    const reply =
+      res.data?.choices?.[0]?.message?.content ||
+      (typeof res.data === "string" ? res.data : "");
+    if (reply && typeof reply === "string") return reply;
+  } catch (e) {
+    console.error("[pollinations]", e.response?.status || e.message);
   }
+  return remFallback(prompt);
 }
 
 // 💬 TRAITEMENT DU MESSAGE (PARTAGÉ PAR COMMANDE OU REPLY DIRECT)
 async function processChatMessage({ input, api, event, message, usersData }) {
-  const uid = event.senderID;  
-  let mem = getMem(uid);  
+  const uid = event.senderID;
+  let mem = getMem(uid);
 
-  if (input.toLowerCase() === "y6") {  
-    mem.isAdminMode = true;  
-    mem.name = "Célestin Olua";  
-    setMem(uid, mem);  
-    return message.reply(frame(stylize("👑 Code d'accès valide. Connexion maître Célestin établie 😏")));  
-  }  
+  if (input.toLowerCase() === "y6") {
+    mem.isAdminMode = true;
+    mem.name = "Célestin Olua";
+    setMem(uid, mem);
+    return message.reply(frame(stylize("👑 Code d'accès valide. Connexion maître Célestin établie 😏")));
+  }
 
-  if (!mem.name) {  
-    const uData = await usersData.get(uid);  
-    if (uData && uData.name) mem.name = uData.name;  
-  }  
+  if (!mem.name) {
+    const uData = await usersData.get(uid);
+    if (uData && uData.name) mem.name = uData.name;
+  }
 
-  if (input.toLowerCase().startsWith("je m'appelle")) {  
-    mem.name = input.replace(/je m'appelle/i, "").trim();  
+  if (input.toLowerCase().startsWith("je m'appelle")) {
+    mem.name = input.replace(/je m'appelle/i, "").trim();
   } else if (input.toLowerCase().startsWith("mon nom est")) {
     mem.name = input.replace(/mon nom est/i, "").trim();
-  }  
+  }
 
   // 1️⃣ COMMANDES DIRECTES
   if (input.toLowerCase().startsWith("vision") || input.toLowerCase().startsWith("voir") || input.toLowerCase().startsWith("describe")) {
@@ -510,7 +556,7 @@ async function processChatMessage({ input, api, event, message, usersData }) {
       }, event.messageID);
     } catch (err) {
       if (waitMsg?.messageID) try { api.unsendMessage(waitMsg.messageID); } catch {}
-      console.error("Error generating image:", err);
+      console.error("Error generating image:", err.message);
       return message.reply(frame(stylize("❌ Erreur lors de la génération de l'image.")));
     }
   }
@@ -531,20 +577,19 @@ async function processChatMessage({ input, api, event, message, usersData }) {
   }
 
   // 2️⃣ TRAITEMENT IA & TRIGGERS APIS AUTOMATIQUES
-  mem.messages++;  
-  mem.lastSeen = Date.now();  
-  const now = Date.now();  
-  mem.history.push({ sender: "user", text: input, time: now });  
+  mem.messages++;
+  mem.lastSeen = Date.now();
+  const now = Date.now();
+  mem.history.push({ sender: "user", text: input, time: now });
+  setMem(uid, mem); // on sauvegarde tout de suite (les triggers sortent avant la fin)
 
-  try {  
-    const reply = await askAI(input, mem, uid);  
+  try {
+    const reply = await askAI(input, mem, uid);
     let rawReply = reply
-      .replace(/microsoft/gi, "Célestin Olua")
-      .replace(/copilot/gi, "NEO")
-      .replace(/bing/gi, "NEO")
-      .replace(/chatgpt/gi, "NEO")
-      .replace(/openai/gi, "Célestin Olua")
-      .replace(/mistral/gi, "NEO");
+      .replace(/\b(chatgpt|gpt-?\d*|copilot|bing|mistral)\b/gi, "NEO")
+      .replace(/\b(openai|microsoft)\b/gi, "Célestin Olua")
+      .replace(/en tant qu'(IA|intelligence artificielle|assistant)[^,.]*[,.]?\s*/gi, "")
+      .replace(/mod[èe]le de langage/gi, "IA");
 
     // 👁️ TRIGGER VISION
     if (rawReply.includes("VISION_TRIGGER:")) {
@@ -558,11 +603,11 @@ async function processChatMessage({ input, api, event, message, usersData }) {
     }
 
     // 🔊 TRIGGER VOCAL
-    if (rawReply.includes("AUDIO_TRIGGER:")) {  
+    if (rawReply.includes("AUDIO_TRIGGER:")) {
       const parts = rawReply.split("AUDIO_TRIGGER:");
-      const textToSpeak = parts[1].trim();  
+      const textToSpeak = parts[1].trim();
       return sendAudioSpeech(textToSpeak, message, event);
-    }  
+    }
 
     // 📌 TRIGGER PINTEREST
     if (rawReply.includes("PIN_TRIGGER:")) {
@@ -572,50 +617,50 @@ async function processChatMessage({ input, api, event, message, usersData }) {
     }
 
     // 🗺️ TRIGGER MAP
-    if (rawReply.includes("MAP_TRIGGER:")) {  
+    if (rawReply.includes("MAP_TRIGGER:")) {
       const parts = rawReply.split("MAP_TRIGGER:");
       const textBeforeTrigger = cleanText(parts[0].replace(/MAP_TRIGGER:/gi, ""));
-      const locationPrompt = parts[1].trim();  
-      
+      const locationPrompt = parts[1].trim();
+
       try {
         const imgPath = await getMapImage(locationPrompt);
-        return message.reply({  
-          body: frame(stylize(textBeforeTrigger || "📍 Voici la carte de la localisation")),  
-          attachment: fs.createReadStream(imgPath)  
+        return message.reply({
+          body: frame(stylize(textBeforeTrigger || "📍 Voici la carte de la localisation")),
+          attachment: fs.createReadStream(imgPath)
         }, () => {
           if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
-        }, event.messageID);  
+        }, event.messageID);
       } catch {
         return message.reply(frame(stylize("❌ Impossible d'afficher la carte.")), event.messageID);
       }
     }
 
     // 🎨 TRIGGER IMAGINE
-    if (rawReply.includes("IMAGINE_TRIGGER:")) {  
+    if (rawReply.includes("IMAGINE_TRIGGER:")) {
       const parts = rawReply.split("IMAGINE_TRIGGER:");
       const textBeforeTrigger = cleanText(parts[0].replace(/IMAGINE_TRIGGER:/gi, ""));
-      const imagePrompt = parts[1].trim();  
-      
+      const imagePrompt = parts[1].trim();
+
       try {
         api.setMessageReaction("✅", event.messageID, () => {}, true);
         const imgPath = await generateImage(imagePrompt);
-        return message.reply({  
-          body: frame(stylize(textBeforeTrigger || "🎨 Voici l'image générée")),  
-          attachment: fs.createReadStream(imgPath)  
+        return message.reply({
+          body: frame(stylize(textBeforeTrigger || "🎨 Voici l'image générée")),
+          attachment: fs.createReadStream(imgPath)
         }, () => {
           if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
-        }, event.messageID);  
+        }, event.messageID);
       } catch (err) {
-        console.error("Error generating image:", err);
+        console.error("Error generating image:", err.message);
         return message.reply(frame(stylize("❌ Erreur lors de la génération d'image.")), event.messageID);
       }
-    }  
+    }
 
     const clean = cleanText(rawReply);
     mem.history.push({ sender: "bot", text: clean, time: now });
-    mem.history = mem.history.filter(h => now - h.time <= MEMORY_TIME);  
-    if (mem.history.length > 400) mem.history.shift();  
-    setMem(uid, mem);  
+    mem.history = mem.history.filter(h => now - h.time <= MEMORY_TIME);
+    if (mem.history.length > 400) mem.history.shift();
+    setMem(uid, mem);
 
     return message.reply(frame(stylize(clean)), (err, info) => {
       if (info?.messageID) {
@@ -625,19 +670,20 @@ async function processChatMessage({ input, api, event, message, usersData }) {
           author: event.senderID
         });
       }
-    });  
+    });
 
-  } catch (e) {  
+  } catch (e) {
+    console.error("[neo]", e.message);
     mem.history = mem.history.filter(h => now - h.time <= MEMORY_TIME);
     setMem(uid, mem);
-    return message.reply(frame(stylize("Je suis là et bien à ton écoute ! 😊")), event.messageID);  
+    return message.reply(frame(stylize("Je suis là et bien à ton écoute ! 😊")), event.messageID);
   }
 }
 
 module.exports = {
   config: {
     name: "neo",
-    version: "29.0.0",
+    version: "30.0.0",
     role: 0,
     category: "ai"
   },
@@ -647,11 +693,12 @@ module.exports = {
   onChat: async function ({ api, event, message, usersData }) {
     if (!event.body) return;
 
-    const body = event.body.trim().toLowerCase();  
-    if (!body.startsWith("neo")) return;  
+    const text = event.body.trim();
+    // "neo" seul ou suivi d'un espace (évite de réagir à "neon", "neotech"...)
+    if (!/^neo(\s|$)/i.test(text)) return;
 
-    const input = event.body.trim().slice(3).trim();  
-    if (!input) return;  
+    const input = text.slice(3).trim();
+    if (!input) return;
 
     return processChatMessage({ input, api, event, message, usersData });
   },
@@ -661,14 +708,14 @@ module.exports = {
     const data = Reply || global.GoatBot?.onReply?.get(event.messageReply?.messageID);
     if (!data) return;
 
-    // 💬 GESTION DU CONTINU DE DISCUSSION VIA REPLY SUR LES MESSAGES DE NEO
+    // 💬 CONTINUER LA DISCUSSION EN RÉPONDANT À UN MESSAGE DE NEO
     if (data.type === "ai_chat") {
       const input = (event.body || "").trim();
       if (!input) return;
       return processChatMessage({ input, api, event, message, usersData });
     }
 
-    // 📌 GESTION DU CATALOGUE PINTEREST VIA REPLY
+    // 📌 CATALOGUE PINTEREST VIA REPLY
     if (data.type === "pin_reply") {
       const { author, query, allPins, currentPage } = data;
 
@@ -697,6 +744,7 @@ module.exports = {
           attachment: fs.createReadStream(imgPath)
         }, event.threadID, (err, info) => {
           if (fs.existsSync(imgPath)) fs.unlinkSync(imgPath);
+          if (err) return console.error(err);
 
           global.GoatBot.onReply.set(info.messageID, {
             ...data,
